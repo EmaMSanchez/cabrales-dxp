@@ -11,7 +11,7 @@
 		"astro": "astro"
 	},
 	"devDependencies": {
-		"@storyblok/astro": "^10.3.1",
+		"@storyblok/astro": "^10.3.2",
 		"astro": "^7.4.0",
 		"playwright-core": "^1.64.1",
 		"vite": "^8.3.0",
