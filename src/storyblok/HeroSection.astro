@@ -1,0 +1,14 @@
+---
+import { storyblokEditable } from '@storyblok/astro';
+import ScrollVideo from '../components/ScrollVideo.jsx';
+import CoffeeEditorial from '../components/CoffeeEditorial.astro';
+import { coffeeContent } from '../lib/coffeeContent.js';
+
+const { blok } = Astro.props;
+const content = coffeeContent(blok);
+---
+
+<div {...storyblokEditable(blok)}>
+  <ScrollVideo client:load content={content} />
+  <CoffeeEditorial sections={content.editorial} cta={content.cta} />
+</div>

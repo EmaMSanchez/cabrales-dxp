@@ -1,0 +1,24 @@
+# build output
+dist/
+reports/
+.vercel/
+.netlify/
+node_modules/.vite-dev/
+node_modules/.vite-build/
+
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+
+# environment variables
+.env
+.env.*
+!.env.example
+
+# macOS-specific files
+.DS_Store

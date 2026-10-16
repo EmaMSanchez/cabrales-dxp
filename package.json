@@ -1,0 +1,43 @@
+{
+	"name": "super-cabrales-experience",
+	"type": "module",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"test:browser": "node scripts/browser-smoke.mjs",
+		"preview": "astro preview",
+		"astro": "astro"
+	},
+	"devDependencies": {
+		"@storyblok/astro": "^10.3.1",
+		"astro": "^7.4.0",
+		"playwright-core": "^1.64.1",
+		"vite": "^8.3.0",
+		"vite-plugin-mkcert": "^2.1.0"
+	},
+	"dependencies": {
+		"@astrojs/netlify": "^8.2.10",
+		"@astrojs/react": "^7.1.0",
+		"@astrojs/vercel": "^11.0.15",
+		"@fontsource/manrope": "^5.3.0",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"gsap": "^3.15.0",
+		"lenis": "^1.3.27",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
+	},
+	"overrides": {
+		"sharp": "^0.35.4",
+		"tar": "^7.5.22",
+		"es-module-lexer": "^3.0.2",
+		"yargs": "^18.1.0",
+		"@netlify/vite-plugin": "^3.0.1",
+		"image-size": "^2.0.4",
+		"tmp": "^0.2.7",
+		"brace-expansion": "^5.0.12",
+		"path-to-regexp": "^6.3.0"
+	}
+}

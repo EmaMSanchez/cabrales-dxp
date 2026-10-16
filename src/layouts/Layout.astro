@@ -1,0 +1,57 @@
+---
+import '../styles/coffee.css';
+
+const { title = 'Del grano a tu taza | Super Cabrales Espresso', description = 'Un recorrido audiovisual conceptual por el café, del paquete a la taza. Exploralo a tu ritmo.', image = '/images/cafe-poster.webp', isError = false } = Astro.props;
+const canonical = new URL('/', Astro.url);
+const poster = new URL(image, Astro.url);
+---
+
+<!doctype html>
+<html lang="es-AR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="es_AR" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={poster} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>{title}</title>
+    {!isError && <script is:inline>
+      // Registrar la posición ANTES de hidratar evita que el navegador la ancle al footer
+      // mientras el hero pasa de su fallback estático al escenario sticky de varios viewports.
+      try {
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          const navigation = performance.getEntriesByType('navigation')[0]?.type;
+          const saved = Number(sessionStorage.getItem('cabrales:scrollY'));
+          window.__coffeeRestoreY = (navigation === 'reload' || navigation === 'back_forward') && Number.isFinite(saved) && saved > 0 ? saved : null;
+          history.scrollRestoration = 'manual';
+          window.addEventListener('pagehide', () => sessionStorage.setItem('cabrales:scrollY', String(window.scrollY)));
+        }
+      } catch { /* El almacenamiento privado no debe impedir el recorrido. */ }
+    </script>}
+  </head>
+  <body>
+    <a class="skip-link" href="#contenido">Ir al contenido</a>
+    <header class="site-header">
+      <a href="/" class="site-header__brand" aria-label="Super Cabrales Espresso, volver al inicio">
+        <span class="site-header__mark" aria-hidden="true">C.</span>
+        <span class="site-header__name">SUPER CABRALES <small>ESPRESSO</small></span>
+      </a>
+      {!isError && <nav aria-label="Navegación principal"><a href="#historia">La experiencia <span aria-hidden="true">↗</span></a></nav>}
+    </header>
+    <div id="contenido"><slot /></div>
+    <footer class="site-footer">
+      <p>Un recorrido para mirar el café desde otra perspectiva.</p>
+      <small>Experiencia conceptual independiente. Este no es un sitio oficial de la marca.</small>
+      {!isError && <a href="#inicio">Volver al inicio ↑</a>}
+    </footer>
+  </body>
+</html>

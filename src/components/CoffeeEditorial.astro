@@ -1,0 +1,74 @@
+---
+const { sections, cta } = Astro.props;
+const words = 'Cada plano nos acerca al café. Cada pausa invita a mirar.'.split(' ');
+---
+
+{sections.length > 0 && (
+  <div class="coffee-editorial" id="historia">
+    <section class="coffee-tagline" aria-label="Una invitación a mirar más de cerca">
+      <span class="coffee-editorial__eyebrow">Después del último fotograma</span>
+      <h2 data-coffee-tagline aria-label="Cada plano nos acerca al café. Cada pausa invita a mirar.">
+        {words.map((word) => <span data-coffee-word aria-hidden="true">{word}{' '}</span>)}
+      </h2>
+    </section>
+
+    {sections.map((item) => (
+      <section class={`coffee-panel coffee-panel--${item.name}`} aria-labelledby={`coffee-${item.name}`} data-coffee-panel>
+        <div class="coffee-panel__copy">
+          <span class="coffee-editorial__eyebrow">{item.eyebrow}</span>
+          <h2 id={`coffee-${item.name}`}>{item.title}</h2>
+          {item.text && <p>{item.text}</p>}
+          {item.name === 'closing' && cta && <a class="coffee-cta" href={cta.href}>{cta.label}<span aria-hidden="true">↗</span></a>}
+        </div>
+        <figure class="coffee-panel__figure">
+          <img src={item.image.src} alt={item.image.alt || item.title} loading="lazy" decoding="async" />
+          <figcaption>Super Cabrales Espresso · experiencia conceptual</figcaption>
+        </figure>
+      </section>
+    ))}
+  </div>
+)}
+
+<script>
+  import { gsap } from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    gsap.registerPlugin(ScrollTrigger);
+    const tagline = document.querySelector('[data-coffee-tagline]');
+    if (tagline) {
+      const words = [...tagline.querySelectorAll('[data-coffee-word]')];
+      tagline.classList.add('is-animated');
+      const paint = (progress) => {
+        words.forEach((word, index) => {
+          const x = Math.min(1, Math.max(0, progress * words.length - index));
+          const eased = x * x * (3 - 2 * x);
+          word.style.color = `rgba(245, 239, 227, ${0.3 + 0.7 * eased})`;
+        });
+      };
+      ScrollTrigger.create({
+        trigger: tagline,
+        start: 'top 85%',
+        end: 'bottom 45%',
+        onUpdate: (self) => paint(self.progress),
+        onRefresh: (self) => paint(self.progress),
+      });
+    }
+
+    if ('IntersectionObserver' in window) {
+      const panels = [...document.querySelectorAll('[data-coffee-panel]')];
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-in');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { rootMargin: '0px 0px -8% 0px' });
+      panels.forEach((panel) => {
+        panel.classList.add('is-revealable');
+        observer.observe(panel);
+      });
+    }
+  }
+</script>

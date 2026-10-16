@@ -1,0 +1,43 @@
+---
+import { useStoryblokApi } from '@storyblok/astro';
+import StoryblokComponent from '@storyblok/astro/StoryblokComponent.astro';
+import Layout from '../layouts/Layout.astro';
+
+// La única Story de este frontend es «cabrales». El slug editorial no condiciona la URL pública.
+const { slug } = Astro.params;
+const unknownRoute = Boolean(slug && slug !== 'cabrales');
+if (unknownRoute) Astro.response.status = 404;
+
+let story;
+if (!unknownRoute) {
+  try {
+    const api = useStoryblokApi();
+    const { data } = await api.get('cdn/stories/cabrales', {
+      version: import.meta.env.DEV ? 'draft' : 'published',
+    });
+    story = data?.story;
+  } catch (error) {
+    // Un fallo del CMS no debe dejar la experiencia en blanco. Nunca imprimir tokens en el log.
+    console.error('No se pudo consultar la Story cabrales:', error?.message || 'error de red');
+  }
+}
+
+let content = story?.content?.component === 'default-page'
+  ? story.content
+  : { component: 'default-page', body: [{ component: 'hero-section', _uid: 'cabrales-local' }] };
+if (!Array.isArray(content.body) || !content.body.some((item) => item.component === 'hero-section')) {
+  content = { ...content, body: [{ component: 'hero-section', _uid: 'cabrales-local' }] };
+}
+const hero = content.body?.find((item) => item.component === 'hero-section');
+const title = `${hero?.intro_title?.trim() || 'Del grano a tu taza'} | Super Cabrales Espresso`;
+const cmsPoster = hero?.scroll_poster_image?.filename || hero?.poster_image?.filename;
+const image = typeof cmsPoster === 'string' && /^https?:\/\//i.test(cmsPoster) ? cmsPoster : '/images/cafe-poster.webp';
+---
+
+<Layout title={unknownRoute ? 'Página no encontrada | Super Cabrales Espresso' : title} image={image} isError={unknownRoute}>
+  {unknownRoute ? (
+    <main class="coffee-not-found"><p>404 / Esta página no existe</p><h1>Volvé al comienzo del recorrido.</h1><a href="/">Ir al inicio →</a></main>
+  ) : (
+    <StoryblokComponent blok={content} />
+  )}
+</Layout>
