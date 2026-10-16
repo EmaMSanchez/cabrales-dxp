@@ -39,6 +39,8 @@ export default defineConfig({
             'default-page': 'storyblok/Page',
         },
 		}), react()],
+    // No se usan sesiones de Astro; evita el driver Netlify Blobs en la función SSR.
+    session: false,
     output: 'server',
     adapter: NETLIFY ? netlify() : vercel(),
     vite: {
