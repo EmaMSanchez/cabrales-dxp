@@ -8,9 +8,9 @@ if (exampleBuy.buyHref !== 'https://example.com/tienda' || exampleBuy.cta !== nu
   throw Error('El destino de Comprar debe respetar el enlace seguro de Storyblok incluso sin texto de CTA.');
 }
 const detailFallback = coffeeContent().editorial.find((section) => section.name === 'detail').image;
-const detailFromCms = coffeeContent({ detail_image: { filename: 'https://a.storyblok.com/ejemplo/espresso.webp', alt: 'Imagen editorial del espresso' } }).editorial.find((section) => section.name === 'detail').image;
-if (detailFallback.src !== '/images/cafe-taza.webp' || detailFallback.alt !== 'Detalle de la crema de un espresso visto desde arriba' || detailFromCms.src !== 'https://a.storyblok.com/ejemplo/espresso.webp' || detailFromCms.alt !== 'Imagen editorial del espresso') {
-  throw Error('El detalle debe usar la nueva taza local, salvo que Storyblok configure una imagen propia.');
+const detailFromCms = coffeeContent({ detail_image: { filename: 'https://a.storyblok.com/ejemplo/granos.webp', alt: 'Macro editorial de granos' } }).editorial.find((section) => section.name === 'detail').image;
+if (detailFallback.src !== '/images/cafe-grano-detalle.webp' || detailFallback.alt !== 'Primer plano de la textura de un grano de café tostado' || detailFromCms.src !== 'https://a.storyblok.com/ejemplo/granos.webp' || detailFromCms.alt !== 'Macro editorial de granos') {
+  throw Error('El detalle debe usar el grano enfocado local, salvo que Storyblok configure una imagen propia.');
 }
 
 const executablePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
