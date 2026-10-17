@@ -122,6 +122,7 @@ a { color: inherit; }
   text-shadow: 0 2px 8px #000;
 }
 .coffee-film__hint::before { content: '↓'; display: inline-block; margin-right: 12px; color: #e5b945; font-size: 20px; vertical-align: middle; }
+.coffee-film__credit { flex-shrink: 0; white-space: nowrap; text-transform: none; }
 .coffee-film__progress { position: absolute; z-index: 4; bottom: 0; left: 0; right: 0; height: 2px; background: rgba(245,239,227,.3); }
 .coffee-film__progress span { display: block; width: 100%; height: 100%; transform: scaleX(0); transform-origin: left; background: #e5b945; }
 .coffee-film__status { position: absolute; z-index: 5; bottom: 80px; left: max(64px, calc((100vw - 1400px) / 2 + 64px)); max-width: 380px; margin: 0; color: #f5efe3; font-size: 14px; line-height: 20px; }

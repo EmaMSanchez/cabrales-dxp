@@ -39,6 +39,18 @@ try {
   desktop.on('pageerror', (error) => errors.push(`desktop: ${error.message}`));
   await desktop.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await desktop.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
+  const interfaceState = await desktop.evaluate(() => ({
+    header: !!document.querySelector('.site-header'),
+    sceneNumbers: document.querySelectorAll('.coffee-scene__number').length,
+    credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(),
+    creditCase: getComputedStyle(document.querySelector('.coffee-film__credit')).textTransform,
+    titleColor: getComputedStyle(document.querySelector('.coffee-film__intro h1')).color,
+    subtitleColor: getComputedStyle(document.querySelector('.coffee-film__intro p')).color,
+  }));
+  if (interfaceState.header || interfaceState.sceneNumbers || interfaceState.credit !== 'by 1810' || interfaceState.creditCase !== 'none' || interfaceState.titleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleColor !== 'rgb(245, 239, 227)') {
+    throw Error(`El diseño del hero no coincide con lo solicitado: ${JSON.stringify(interfaceState)}`);
+  }
+  console.log('INTERFAZ ' + JSON.stringify(interfaceState));
   const first = await frameAt(desktop, 0);
   await capture(desktop, 'desktop-intro.png');
   const macro = await frameAt(desktop, .43);

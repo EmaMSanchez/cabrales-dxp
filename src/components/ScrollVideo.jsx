@@ -180,9 +180,9 @@ export default function ScrollVideo({ content }) {
           <p>{content.introSubtitle}</p>
         </div>
         <SceneOverlay scenes={content.scenes} />
-        <div className="coffee-film__bottom" aria-hidden="true">
+        <div className="coffee-film__bottom">
           <span className="coffee-film__hint">{content.scrollHint}</span>
-          <span className="coffee-film__counter">01 — {String(content.scenes.length).padStart(2, '0')}</span>
+          <span className="coffee-film__credit">by 1810</span>
         </div>
         <div className="coffee-film__progress" aria-hidden="true"><span ref={progressRef} /></div>
         <p className="coffee-film__status" ref={statusRef} role="status" aria-live="polite" />
