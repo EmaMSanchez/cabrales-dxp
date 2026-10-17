@@ -1,0 +1,75 @@
+---
+const { buyHref } = Astro.props;
+const links = [
+  { label: 'Inicio', href: '#inicio' },
+  { label: 'Comprar', href: buyHref, buy: true },
+  { label: 'Sobre nosotros', href: '#historia' },
+];
+---
+
+<header class="coffee-header" data-coffee-header>
+  <div class="coffee-header__inner">
+    <a class="coffee-header__brand" href="#inicio" aria-label="Cabrales: ir al inicio">
+      <img src="/images/cabrales-logo.png" width="1196" height="728" alt="Cabrales" />
+    </a>
+    <nav class="coffee-header__nav" aria-label="Navegación principal">
+      {links.map((item) => item.href ? (
+        <a class:list={['coffee-header__link', { 'coffee-header__link--buy': item.buy }]} href={item.href}>{item.label}</a>
+      ) : (
+        <button class="coffee-header__link coffee-header__link--buy" type="button" disabled title="Próximamente">{item.label}</button>
+      ))}
+    </nav>
+    <details class="coffee-header__mobile">
+      <summary>Menú</summary>
+      <nav aria-label="Navegación móvil">
+        {links.map((item) => item.href ? (
+          <a class:list={['coffee-header__link', { 'coffee-header__link--buy': item.buy }]} href={item.href}>{item.label}</a>
+        ) : (
+          <button class="coffee-header__link coffee-header__link--buy" type="button" disabled title="Próximamente">{item.label}</button>
+        ))}
+      </nav>
+    </details>
+  </div>
+</header>
+
+<script>
+  const header = document.querySelector('[data-coffee-header]');
+  const editorial = document.querySelector('#historia');
+  if (header) {
+    const menu = header.querySelector('details');
+    let previousY = window.scrollY;
+    let travel = 0;
+    let showInEditorial = false;
+    let frame = 0;
+
+    function update() {
+      frame = 0;
+      const y = window.scrollY;
+      const delta = y - previousY;
+      travel = delta > 0 ? Math.max(0, travel) + delta : Math.min(0, travel) + delta;
+      if (travel >= 8) showInEditorial = false;
+      if (travel <= -8) showInEditorial = true;
+
+      // La sección editorial comienza donde termina el escenario sticky, no en el último fotograma del MP4.
+      const inEditorial = editorial && editorial.getBoundingClientRect().top <= 0;
+      const visible = y <= 0 || (inEditorial && showInEditorial);
+      header.classList.toggle('is-hidden', !visible);
+      header.setAttribute('aria-hidden', String(!visible));
+      header.inert = !visible;
+      if (!visible && menu) menu.open = false;
+      previousY = y;
+    }
+
+    function schedule() {
+      if (!frame) frame = requestAnimationFrame(update);
+    }
+
+    menu?.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('a')) menu.open = false;
+    });
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    window.addEventListener('pageshow', schedule);
+    schedule();
+  }
+</script>

@@ -83,6 +83,7 @@ export function coffeeContent(blok = {}) {
     scenes: scenesFromCms(blok.scenes),
     desktopPosition: framing(blok.object_position_desktop),
     mobilePosition: framing(blok.object_position_mobile),
+    buyHref: ctaHref,
     cta: ctaLabel && ctaHref ? { label: ctaLabel, href: ctaHref } : null,
     editorial: [
       { name: 'opening', eyebrow: '01 / El origen', title: fallbackText(blok.opening_title, 'Del grano a la experiencia'), text: '', image: opening },

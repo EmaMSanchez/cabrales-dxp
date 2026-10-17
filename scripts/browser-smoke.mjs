@@ -1,6 +1,12 @@
 import { chromium } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { coffeeContent } from '../src/lib/coffeeContent.js';
+
+const exampleBuy = coffeeContent({ cta_link: { url: 'https://example.com/tienda' } });
+if (exampleBuy.buyHref !== 'https://example.com/tienda' || exampleBuy.cta !== null || coffeeContent({ cta_link: { url: 'javascript:alert(1)' } }).buyHref) {
+  throw Error('El destino de Comprar debe respetar el enlace seguro de Storyblok incluso sin texto de CTA.');
+}
 
 const executablePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const baseURL = process.env.CAFE_TEST_URL || 'https://localhost:4321/';
@@ -42,9 +48,19 @@ try {
   await desktop.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await desktop.waitForFunction(() => document.querySelector('.coffee-loop__video').currentTime > .15 && document.querySelector('.coffee-film').classList.contains('is-video-ready'), null, { timeout: 25000 });
   await capture(desktop, 'desktop-loop.png');
-  const loopState = await desktop.evaluate(() => ({ source: document.querySelector('.coffee-loop__video').getAttribute('src'), duration: document.querySelector('.coffee-loop__video').duration, paused: document.querySelector('.coffee-loop__video').paused, sections: document.querySelectorAll('.coffee-film').length, scrollOpacity: getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, controls: document.querySelectorAll('.coffee-film button, .coffee-film video[controls]').length, headings: document.querySelectorAll('.coffee-film h1').length, eyebrow: document.querySelector('.coffee-film__eyebrow')?.textContent?.trim(), title: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), subtitle: document.querySelector('.coffee-film__intro p')?.textContent?.trim(), hint: document.querySelector('.coffee-film__hint')?.textContent?.trim(), credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(), subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, extraText: document.querySelectorAll('.coffee-loop__copy, .coffee-loop__link').length }));
-  if (!loopState.source || loopState.duration < 2.8 || loopState.duration > 3 || loopState.paused || loopState.sections !== 1 || loopState.scrollOpacity !== '0' || loopState.controls || loopState.headings !== 1 || loopState.eyebrow !== 'Una experiencia en movimiento' || loopState.title !== 'Del grano a tu taza' || loopState.subtitle !== 'Una experiencia que comienza con el origen del café.' || loopState.hint !== 'Deslizá para descubrir' || loopState.credit !== 'by 1810' || loopState.subtitleOpacity !== '1' || loopState.extraText) throw Error(`El escenario inicial no coincide con lo solicitado: ${JSON.stringify(loopState)}`);
+  const loopState = await desktop.evaluate(() => {
+    const brand = document.querySelector('.coffee-header__brand').getBoundingClientRect();
+    const navigation = document.querySelector('.coffee-header__nav').getBoundingClientRect();
+    return { source: document.querySelector('.coffee-loop__video').getAttribute('src'), duration: document.querySelector('.coffee-loop__video').duration, paused: document.querySelector('.coffee-loop__video').paused, sections: document.querySelectorAll('.coffee-film').length, scrollOpacity: getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, controls: document.querySelectorAll('.coffee-film button, .coffee-film video[controls]').length, headings: document.querySelectorAll('.coffee-film h1').length, eyebrow: document.querySelector('.coffee-film__eyebrow')?.textContent?.trim(), title: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), subtitle: document.querySelector('.coffee-film__intro p')?.textContent?.trim(), hint: document.querySelector('.coffee-film__hint')?.textContent?.trim(), credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(), subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, extraText: document.querySelectorAll('.coffee-loop__copy, .coffee-loop__link').length, headerVisible: !document.querySelector('.coffee-header')?.inert, logoLoaded: document.querySelector('.coffee-header__brand img')?.naturalWidth > 0, logoWidth: brand.width, alignment: Math.abs((brand.top + brand.bottom - navigation.top - navigation.bottom) / 2), nav: [...document.querySelectorAll('.coffee-header__nav .coffee-header__link')].map((node) => node.textContent.trim()), aboutHref: document.querySelector('.coffee-header__nav a:last-child')?.getAttribute('href'), buy: document.querySelector('.coffee-header__nav .coffee-header__link--buy')?.getAttribute('href') || document.querySelector('.coffee-header__nav .coffee-header__link--buy')?.disabled };
+  });
+  if (!loopState.source || loopState.duration < 2.8 || loopState.duration > 3 || loopState.paused || loopState.sections !== 1 || loopState.scrollOpacity !== '0' || loopState.controls || loopState.headings !== 1 || loopState.eyebrow !== 'Una experiencia en movimiento' || loopState.title !== 'Del grano a tu taza' || loopState.subtitle !== 'Una experiencia que comienza con el origen del café.' || loopState.hint !== 'Deslizá para descubrir' || loopState.credit !== 'by 1810' || loopState.subtitleOpacity !== '1' || loopState.extraText || !loopState.headerVisible || !loopState.logoLoaded || loopState.logoWidth !== 112 || loopState.alignment > 1 || loopState.nav.join('|') !== 'Inicio|Comprar|Sobre nosotros' || loopState.aboutHref !== '#historia' || !loopState.buy) throw Error(`El escenario inicial no coincide con lo solicitado: ${JSON.stringify(loopState)}`);
   console.log('LOOP ' + JSON.stringify(loopState));
+  const favicons = await desktop.evaluate(async () => Promise.all([...document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')].map(async (link) => {
+    const response = await fetch(link.href);
+    return { path: new URL(link.href).pathname, status: response.status, bytes: (await response.arrayBuffer()).byteLength };
+  })));
+  if (favicons.length !== 3 || !['/favicon-32.png', '/favicon.ico', '/apple-touch-icon.png'].every((path) => favicons.some((icon) => icon.path === path && icon.status === 200 && icon.bytes > 1000))) throw Error(`Los íconos Cabrales no se sirven correctamente: ${JSON.stringify(favicons)}`);
+  console.log('FAVICON ' + JSON.stringify(favicons));
   const cycles = await desktop.evaluate(() => new Promise((resolve, reject) => {
     const video = document.querySelector('.coffee-loop__video');
     let previous = video.currentTime;
@@ -80,7 +96,7 @@ try {
   });
   await desktop.waitForFunction(() => !document.querySelector('.coffee-loop__video').paused);
   await desktop.evaluate(() => window.scrollTo(0, 1));
-  await desktop.waitForFunction(() => scrollY >= 1 && document.querySelector('.coffee-loop__video').paused && +getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity > 0);
+  await desktop.waitForFunction(() => scrollY >= 1 && document.querySelector('.coffee-loop__video').paused && +getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity > 0 && document.querySelector('.coffee-header').inert);
   await desktop.evaluate(() => window.scrollTo(0, 120));
   await desktop.waitForFunction(() => scrollY >= 120 && document.querySelector('.coffee-film__video').currentTime > .15);
   const transition = await desktop.evaluate(() => ({ scrollY, loopOpacity: +getComputedStyle(document.querySelector('.coffee-loop')).opacity, filmOpacity: +getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, heading: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), headingOpacity: +getComputedStyle(document.querySelector('.coffee-film__intro')).opacity, paused: document.querySelector('.coffee-loop__video').paused }));
@@ -93,7 +109,7 @@ try {
   await desktop.waitForFunction(() => scrollY >= 170 && getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity === '1' && document.querySelector('.coffee-loop__video').paused);
   await capture(desktop, 'desktop-intro.png');
   const interfaceState = await desktop.evaluate(() => ({
-    header: !!document.querySelector('.site-header'),
+    headerHidden: document.querySelector('.coffee-header').inert,
     sceneNumbers: document.querySelectorAll('.coffee-scene__number').length,
     credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(),
     creditCase: getComputedStyle(document.querySelector('.coffee-film__credit')).textTransform,
@@ -101,7 +117,7 @@ try {
     subtitleColor: getComputedStyle(document.querySelector('.coffee-film__intro p')).color,
     subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity,
   }));
-  if (interfaceState.header || interfaceState.sceneNumbers || interfaceState.credit !== 'by 1810' || interfaceState.creditCase !== 'none' || interfaceState.titleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleOpacity !== '1') {
+  if (!interfaceState.headerHidden || interfaceState.sceneNumbers || interfaceState.credit !== 'by 1810' || interfaceState.creditCase !== 'none' || interfaceState.titleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleOpacity !== '1') {
     throw Error(`El diseño del hero no coincide con lo solicitado: ${JSON.stringify(interfaceState)}`);
   }
   console.log('INTERFAZ ' + JSON.stringify(interfaceState));
@@ -127,6 +143,7 @@ try {
   await desktop.reload({ waitUntil: 'domcontentloaded' });
   await desktop.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
   await desktop.waitForFunction(({ y, time }) => Math.abs(scrollY - y) < 25 && Math.abs(document.querySelector('.coffee-film__video').currentTime - time) < .5, { y: beforeReloadY, time: nearEnd.time }, { timeout: 15000 });
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
   console.log('RESTORE ' + JSON.stringify({ before: { y: beforeReloadY, time: nearEnd.time }, after: await desktop.evaluate(() => ({ y: scrollY, time: document.querySelector('.coffee-film__video').currentTime })) }));
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-tagline').offsetTop + 100));
   await desktop.waitForTimeout(350);
@@ -134,6 +151,29 @@ try {
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--opening').offsetTop + 150));
   await desktop.waitForTimeout(850);
   await capture(desktop, 'desktop-opening.png');
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
+  await desktop.evaluate(() => window.scrollBy(0, -100));
+  await desktop.waitForFunction(() => !document.querySelector('.coffee-header').inert && document.querySelector('#historia').getBoundingClientRect().top < innerHeight);
+  await capture(desktop, 'desktop-header-return.png');
+  await desktop.evaluate(() => window.scrollBy(0, 100));
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
+  await desktop.evaluate(() => window.scrollTo(0, document.querySelector('#historia').offsetTop - innerHeight - 100));
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
+  await desktop.evaluate(() => window.scrollTo(0, 0));
+  await desktop.waitForFunction(() => !document.querySelector('.coffee-header').inert);
+  await desktop.evaluate(() => window.scrollTo(0, document.querySelector('#historia').offsetTop - 80));
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
+  await desktop.evaluate(() => window.scrollBy(0, -50));
+  await desktop.waitForTimeout(100);
+  if (!(await desktop.locator('.coffee-header').evaluate((header) => header.inert))) throw Error('El header apareció con el último tramo del video todavía visible.');
+  await desktop.evaluate(() => window.scrollTo(0, document.querySelector('#historia').offsetTop + 180));
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert && document.querySelector('.coffee-tagline').getBoundingClientRect().top < 0);
+  await desktop.evaluate(() => window.scrollBy(0, -80));
+  await desktop.waitForFunction(() => !document.querySelector('.coffee-header').inert && document.querySelector('.coffee-tagline').getBoundingClientRect().top < 0);
+  await capture(desktop, 'desktop-tagline-header.png');
+  await desktop.evaluate(() => window.scrollTo(0, document.querySelector('#historia').offsetTop - innerHeight - 100));
+  await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
+  console.log('HEADER ' + JSON.stringify({ loop: 'visible', video: 'oculto', editorialDown: 'oculto', editorialUp: 'visible', returnToVideo: 'oculto', returnToLoop: 'visible' }));
 
   for (const width of [390, 320]) {
     const mobile = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, deviceScaleFactor: 1, ignoreHTTPSErrors: true });
@@ -141,6 +181,10 @@ try {
     await mobile.goto(baseURL, { waitUntil: 'domcontentloaded' });
     await mobile.waitForFunction(() => document.querySelector('.coffee-loop__video').currentTime > .1, null, { timeout: 25000 });
     await capture(mobile, `mobile-${width}-loop.png`);
+    await mobile.locator('.coffee-header__mobile summary').click();
+    const mobileNav = await mobile.evaluate(() => ({ open: document.querySelector('.coffee-header__mobile').open, links: [...document.querySelectorAll('.coffee-header__mobile .coffee-header__link')].map((node) => node.textContent.trim()) }));
+    if (!mobileNav.open || mobileNav.links.join('|') !== 'Inicio|Comprar|Sobre nosotros') throw Error(`El menú móvil no muestra los tres destinos en ${width}px: ${JSON.stringify(mobileNav)}`);
+    await mobile.locator('.coffee-header__mobile summary').click();
     if (width === 390) {
       await mobile.waitForFunction(() => {
         const loop = document.querySelector('.coffee-loop__video');
@@ -148,15 +192,18 @@ try {
       }, null, { timeout: 6000 });
     }
     await frameAt(mobile, .05);
+    await mobile.waitForFunction(() => document.querySelector('.coffee-header').inert);
     await mobile.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
     const sizes = await mobile.evaluate(() => {
       const hint = document.querySelector('.coffee-film__hint');
       const credit = document.querySelector('.coffee-film__credit');
       const a = hint.getBoundingClientRect();
       const b = credit.getBoundingClientRect();
-      return { viewport: innerWidth, page: document.documentElement.scrollWidth, film: document.querySelector('.coffee-film__stage').getBoundingClientRect().width, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1 };
+      const brand = document.querySelector('.coffee-header__brand').getBoundingClientRect();
+      const menu = document.querySelector('.coffee-header__mobile').getBoundingClientRect();
+      return { viewport: innerWidth, page: document.documentElement.scrollWidth, film: document.querySelector('.coffee-film__stage').getBoundingClientRect().width, logoWidth: brand.width, headerAlignment: Math.abs((brand.top + brand.bottom - menu.top - menu.bottom) / 2), bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1 };
     });
-    if (sizes.page > sizes.viewport + 1 || sizes.bottomCenterDifference > 2 || sizes.hintClipped) throw Error(`Texto inferior desalineado o desbordado en ${width}px: ${JSON.stringify(sizes)}`);
+    if (sizes.page > sizes.viewport + 1 || sizes.logoWidth !== 84 || sizes.headerAlignment > 1 || sizes.bottomCenterDifference > 2 || sizes.hintClipped) throw Error(`Texto inferior o header desalineado en ${width}px: ${JSON.stringify(sizes)}`);
     await capture(mobile, `mobile-${width}.png`);
     const halfway = await frameAt(mobile, .49);
     await frameAt(mobile, 1);
@@ -176,9 +223,11 @@ try {
       const credit = document.querySelector('.coffee-film__credit');
       const a = hint.getBoundingClientRect();
       const b = credit.getBoundingClientRect();
-      return { heroBottom: hero.bottom, copyTop: copy.top, copyBottom: copy.bottom, hintBottom: a.bottom, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1, pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+      const logo = document.querySelector('.coffee-header__brand').getBoundingClientRect();
+      const navigation = (document.querySelector('.coffee-header__mobile').getBoundingClientRect().width ? document.querySelector('.coffee-header__mobile') : document.querySelector('.coffee-header__nav')).getBoundingClientRect();
+      return { heroBottom: hero.bottom, copyTop: copy.top, copyBottom: copy.bottom, headerBottom: Math.max(logo.bottom, navigation.bottom), headerAlignment: Math.abs((logo.top + logo.bottom - navigation.top - navigation.bottom) / 2), hintBottom: a.bottom, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1, pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
     });
-    if (bounds.copyTop < 0 || bounds.copyBottom > Math.min(bounds.heroBottom, height) - 16 || bounds.hintBottom > height - 16 || bounds.bottomCenterDifference > 2 || bounds.hintClipped || bounds.pageWidth > bounds.viewportWidth + 1) throw Error(`El hero se corta en ${width}×${height}: ${JSON.stringify(bounds)}`);
+    if (bounds.copyTop < bounds.headerBottom + 4 || bounds.headerAlignment > 1 || bounds.copyBottom > Math.min(bounds.heroBottom, height) - 16 || bounds.hintBottom > height - 16 || bounds.bottomCenterDifference > 2 || bounds.hintClipped || bounds.pageWidth > bounds.viewportWidth + 1) throw Error(`El hero se corta en ${width}×${height}: ${JSON.stringify(bounds)}`);
     await capture(compact, `compact-${width}x${height}-loop.png`);
     console.log('COMPACT ' + JSON.stringify({ width, height, ...bounds }));
     await compact.close();
@@ -194,9 +243,14 @@ try {
 
   const staticPage = await browser.newPage({ javaScriptEnabled: false, ignoreHTTPSErrors: true });
   const response = await staticPage.goto(baseURL, { waitUntil: 'domcontentloaded' });
-  const staticState = await staticPage.evaluate(() => ({ title: document.querySelector('h1')?.textContent, poster: document.querySelector('.coffee-film__poster')?.getAttribute('src'), loopPoster: document.querySelector('.coffee-loop__poster')?.getAttribute('src'), editorial: document.querySelectorAll('.coffee-panel').length, subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, videosHaveSrc: [...document.querySelectorAll('video')].some((video) => video.hasAttribute('src')) }));
-  if (response.status() !== 200 || !staticState.poster || !staticState.loopPoster || !staticState.editorial || staticState.subtitleOpacity !== '1' || staticState.videosHaveSrc) throw Error('La alternativa sin JavaScript falló.');
+  const staticState = await staticPage.evaluate(() => ({ title: document.querySelector('h1')?.textContent, poster: document.querySelector('.coffee-film__poster')?.getAttribute('src'), loopPoster: document.querySelector('.coffee-loop__poster')?.getAttribute('src'), editorial: document.querySelectorAll('.coffee-panel').length, subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, header: getComputedStyle(document.querySelector('.coffee-header')).visibility, nav: document.querySelector('.coffee-header__nav')?.textContent, videosHaveSrc: [...document.querySelectorAll('video')].some((video) => video.hasAttribute('src')) }));
+  if (response.status() !== 200 || !staticState.poster || !staticState.loopPoster || !staticState.editorial || staticState.subtitleOpacity !== '1' || staticState.header !== 'visible' || !staticState.nav?.includes('Sobre nosotros') || staticState.videosHaveSrc) throw Error('La alternativa sin JavaScript falló.');
   if (await staticPage.locator('.coffee-film__intro h1').textContent() !== staticState.title) throw Error('El título no se ve sin JavaScript.');
+  await staticPage.setViewportSize({ width: 320, height: 480 });
+  await staticPage.locator('.coffee-header__mobile summary').click();
+  if (!(await staticPage.locator('.coffee-header__mobile').evaluate((menu) => menu.open))) throw Error('El menú móvil no funciona sin JavaScript.');
+  await staticPage.locator('.coffee-header__mobile a[href="#historia"]').click();
+  await staticPage.waitForFunction(() => location.hash === '#historia');
   console.log('NO_JS ' + JSON.stringify(staticState));
   await staticPage.close();
 

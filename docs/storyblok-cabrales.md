@@ -13,7 +13,7 @@ Ruta pública `/` y vista previa opcional `/cabrales`. No crear `cafe/home` ni d
 | `scroll_hint` | Text | «Deslizá para descubrir», indicador presente desde el loop. |
 | `object_position_desktop`, `object_position_mobile` | Text | Por ejemplo `50% 50%`; encuadre con `object-fit: cover`. |
 | `scenes` | Blocks | Bloques `scene-item` existentes; si no hay escenas válidas, se usan 5 locales. Si cargás 3, se muestran **solo 3**. |
-| `cta_text`, `cta_link` | Text, Link | Mostrar únicamente si **ambos** tienen contenido y URL válida. No poner enlaces ficticios. |
+| `cta_text`, `cta_link` | Text, Link | La CTA editorial requiere ambos. El botón «Comprar» del header usa `cta_link` si tiene URL válida aunque `cta_text` esté vacío; sin enlace, queda visible pero deshabilitado. No poner enlaces ficticios. |
 | `intro_video` | Asset | Video ambiental del inicio del escenario, en loop. Si está vacío: `/videos/cafe-loop.mp4`. No afecta a `scroll_video`. |
 
 ## Escenario integrado: loop y recorrido
@@ -23,6 +23,8 @@ El loop y el recorrido comparten **un mismo escenario fijo**: el loop ocupa la p
 El MP4 original `media/originals/cabrales_loop_recorte_original_hd.mp4` se conserva **sin modificar** (1,96 s). El fallback web `/videos/cafe-loop.mp4` es una versión derivada: comienza en el segundo 0,5 del original y contiene dos ciclos de 1,46 s en un solo MP4 (2,92 s). En cada ciclo se funden los últimos 11 fotogramas (≈0,46 s) hacia el inicio para suavizar la unión; el reproductor solo reinicia al terminar ambos ciclos. `/images/cafe-loop-poster.webp` representa el primer fotograma. Si `intro_video` está cargado en Storyblok, tiene prioridad y se reproduce tal como fue publicado: este recorte y fundido se aplican **solo** al fallback local. Con movimiento reducido, ahorro de datos o sin JavaScript se muestra el póster y la continuación editorial sin cargar ninguno de los videos; al ocultar la pestaña se pausa el loop.
 
 El loop muestra «Una experiencia en movimiento», `intro_title` («Del grano a tu taza» si está vacío), `intro_subtitle` («Una experiencia que comienza con el origen del café»), `scroll_hint` («Deslizá para descubrir») y «by 1810». Son los **mismos elementos** que permanecen durante la transición inicial, sin repetir el título. El indicador y el crédito comparten una sola línea también en móvil. El título, subtítulo e indicador dan prioridad a Storyblok; la ceja y el crédito son locales. **No** se alteró la Block Library compartida.
+
+El header transparente usa una copia recortada y sin fondo de `Logo-Cabrales-Marrón.png`; el archivo recibido permanece intacto. El logo reducido queda centrado verticalmente respecto de la navegación y del menú móvil. El favicon PNG/ICO y el icono táctil usan la taza de ese mismo logo en vez del grano genérico anterior. «Inicio» va a `#inicio` y «Sobre nosotros» a `#historia`, la continuación conceptual; no hay una página corporativa adicional. El header se ve en el loop y se oculta desde el primer desplazamiento por el video. La sección que comienza con la ceja amarilla «Después del último fotograma» es el límite editorial: cuando ya no queda video en pantalla, allí y en lo que sigue solo reaparece al subir y se oculta al bajar. Al volver al tramo de video se oculta; al llegar al inicio se muestra. En móvil usa un menú nativo y, sin JavaScript, los enlaces permanecen disponibles. Todo proviene de la única Story `cabrales` y fallbacks locales; no se agregan campos al esquema compartido.
 
 ## Propuesta de tiempos iniciales para `scene-item`
 
