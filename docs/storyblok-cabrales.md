@@ -42,7 +42,7 @@ Campos de cada `scene-item`: `headline`, `subheadline`, `start_progress`, `end_p
 
 ## Continuación editorial
 
-`opening_title`/`opening_image`, `detail_title`/`detail_text`/`detail_image`, `closing_title`/`closing_text`/`closing_image` se leen desde **el mismo** `hero-section`. Cada campo presente reemplaza su fallback individual; los vacíos usan textos e imágenes del video (`cafe-granos.webp`, `cafe-macro.webp`, `cafe-final.webp`). Si ni siquiera hay imagen local utilizable, se oculta esa sección. No hay bloque editorial nuevo en `body`. El segmento tipográfico después del video es una invitación conceptual, no una afirmación sobre ingredientes, certificaciones o prestaciones.
+`opening_title`/`opening_image`, `detail_title`/`detail_text`/`detail_image`, `closing_title`/`closing_text`/`closing_image` se leen desde **el mismo** `hero-section`. Cada campo presente reemplaza su fallback individual; los vacíos usan textos e imágenes del video (`cafe-granos.webp`, `cafe-taza.webp`, `cafe-final.webp`). El plano de la crema del espresso sustituye al macro de un grano en «Cada detalle cuenta» para evitar que el recorte ampliado se vea borroso; `detail_image` de Storyblok sigue teniendo prioridad. Si ni siquiera hay imagen local utilizable, se oculta esa sección. No hay bloque editorial nuevo en `body`. El segmento tipográfico después del video es una invitación conceptual, no una afirmación sobre ingredientes, certificaciones o prestaciones.
 
 ## Entornos y Visual Editor
 

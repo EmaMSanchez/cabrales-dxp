@@ -7,6 +7,11 @@ const exampleBuy = coffeeContent({ cta_link: { url: 'https://example.com/tienda'
 if (exampleBuy.buyHref !== 'https://example.com/tienda' || exampleBuy.cta !== null || coffeeContent({ cta_link: { url: 'javascript:alert(1)' } }).buyHref) {
   throw Error('El destino de Comprar debe respetar el enlace seguro de Storyblok incluso sin texto de CTA.');
 }
+const detailFallback = coffeeContent().editorial.find((section) => section.name === 'detail').image;
+const detailFromCms = coffeeContent({ detail_image: { filename: 'https://a.storyblok.com/ejemplo/espresso.webp', alt: 'Imagen editorial del espresso' } }).editorial.find((section) => section.name === 'detail').image;
+if (detailFallback.src !== '/images/cafe-taza.webp' || detailFallback.alt !== 'Detalle de la crema de un espresso visto desde arriba' || detailFromCms.src !== 'https://a.storyblok.com/ejemplo/espresso.webp' || detailFromCms.alt !== 'Imagen editorial del espresso') {
+  throw Error('El detalle debe usar la nueva taza local, salvo que Storyblok configure una imagen propia.');
+}
 
 const executablePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const baseURL = process.env.CAFE_TEST_URL || 'https://localhost:4321/';
@@ -151,6 +156,13 @@ try {
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--opening').offsetTop + 150));
   await desktop.waitForTimeout(850);
   await capture(desktop, 'desktop-opening.png');
+  await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--detail').offsetTop + 150));
+  await desktop.waitForFunction(() => document.querySelector('.coffee-panel--detail img').naturalWidth === 1280);
+  await desktop.waitForTimeout(850);
+  const detailImage = await desktop.locator('.coffee-panel--detail img').evaluate((image) => ({ src: image.getAttribute('src'), alt: image.alt, width: image.naturalWidth, height: image.naturalHeight }));
+  if (detailImage.src !== detailFallback.src || detailImage.alt !== detailFallback.alt || detailImage.width !== 1280 || detailImage.height !== 720) throw Error(`La imagen de «Cada detalle cuenta» no se actualizó: ${JSON.stringify(detailImage)}`);
+  await capture(desktop, 'desktop-detail.png');
+  console.log('DETALLE ' + JSON.stringify(detailImage));
   await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
   await desktop.evaluate(() => window.scrollBy(0, -100));
   await desktop.waitForFunction(() => !document.querySelector('.coffee-header').inert && document.querySelector('#historia').getBoundingClientRect().top < innerHeight);
@@ -208,6 +220,10 @@ try {
     const halfway = await frameAt(mobile, .49);
     await frameAt(mobile, 1);
     await capture(mobile, `mobile-${width}-end.png`);
+    await mobile.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--detail').offsetTop + 80));
+    await mobile.waitForFunction(() => document.querySelector('.coffee-panel--detail img').naturalWidth === 1280);
+    await mobile.waitForTimeout(850);
+    await capture(mobile, `mobile-${width}-detail.png`);
     console.log('MOBILE ' + JSON.stringify({ width, ...sizes, halfway }));
     await mobile.close();
   }
