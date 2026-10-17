@@ -7,16 +7,24 @@ Ruta pública `/` y vista previa opcional `/cabrales`. No crear `cafe/home` ni d
 | Campo | Tipo | Uso / valor sugerido |
 | --- | --- | --- |
 | `scroll_video` | Asset | Subir el MP4 unificado, una sola pieza. Si está vacío: `/videos/cafe-recorrido.mp4`. |
-| `scroll_poster_image`, `poster_image` | Asset | Primer fotograma. Prioridad: `scroll_poster_image`, después `poster_image`, después `/images/cafe-poster.webp`. |
-| `intro_title` | Text | «Del grano a tu taza». |
-| `intro_subtitle` | Textarea | «Una experiencia que comienza con el origen del café». |
-| `scroll_hint` | Text | «Deslizá para descubrir». |
+| `scroll_poster_image`, `poster_image` | Asset | Póster del recorrido de scroll. Prioridad: `scroll_poster_image`, después `poster_image`, después `/images/cafe-poster.webp`. El póster local del loop es independiente: `/images/cafe-loop-poster.webp`. |
+| `intro_title` | Text | «Del grano a tu taza», título compartido por el loop y el inicio del recorrido. |
+| `intro_subtitle` | Textarea | «Una experiencia que comienza con el origen del café». Se ve debajo del título desde el loop y permanece al iniciar el tramo de scroll. |
+| `scroll_hint` | Text | «Deslizá para descubrir», indicador presente desde el loop. |
 | `object_position_desktop`, `object_position_mobile` | Text | Por ejemplo `50% 50%`; encuadre con `object-fit: cover`. |
 | `scenes` | Blocks | Bloques `scene-item` existentes; si no hay escenas válidas, se usan 5 locales. Si cargás 3, se muestran **solo 3**. |
 | `cta_text`, `cta_link` | Text, Link | Mostrar únicamente si **ambos** tienen contenido y URL válida. No poner enlaces ficticios. |
-| `intro_video` | Asset | No se usa: este proyecto no necesita loop ni un segundo video. |
+| `intro_video` | Asset | Video ambiental del inicio del escenario, en loop. Si está vacío: `/videos/cafe-loop.mp4`. No afecta a `scroll_video`. |
 
-### Propuesta de tiempos iniciales para `scene-item`
+## Escenario integrado: loop y recorrido
+
+El loop y el recorrido comparten **un mismo escenario fijo**: el loop ocupa la posición inicial y el primer desplazamiento activa el video de `scroll_video`, con una transición ligada a los primeros 180 px de scroll (hasta el 25 % de la altura visible en pantallas bajas). Al volver arriba, el video de scroll retrocede a su inicio y el loop vuelve a reproducirse. No hay una pantalla completa intermedia, CTA superpuesto ni controles de video. Se puede seguir hacia `#historia` desplazándose normalmente incluso sin JavaScript.
+
+El MP4 original `media/originals/cabrales_loop_recorte_original_hd.mp4` se conserva **sin modificar** (1,96 s). El fallback web `/videos/cafe-loop.mp4` es una versión derivada: comienza en el segundo 0,5 del original y contiene dos ciclos de 1,46 s en un solo MP4 (2,92 s). En cada ciclo se funden los últimos 11 fotogramas (≈0,46 s) hacia el inicio para suavizar la unión; el reproductor solo reinicia al terminar ambos ciclos. `/images/cafe-loop-poster.webp` representa el primer fotograma. Si `intro_video` está cargado en Storyblok, tiene prioridad y se reproduce tal como fue publicado: este recorte y fundido se aplican **solo** al fallback local. Con movimiento reducido, ahorro de datos o sin JavaScript se muestra el póster y la continuación editorial sin cargar ninguno de los videos; al ocultar la pestaña se pausa el loop.
+
+El loop muestra «Una experiencia en movimiento», `intro_title` («Del grano a tu taza» si está vacío), `intro_subtitle` («Una experiencia que comienza con el origen del café»), `scroll_hint` («Deslizá para descubrir») y «by 1810». Son los **mismos elementos** que permanecen durante la transición inicial, sin repetir el título. El indicador y el crédito comparten una sola línea también en móvil. El título, subtítulo e indicador dan prioridad a Storyblok; la ceja y el crédito son locales. **No** se alteró la Block Library compartida.
+
+## Propuesta de tiempos iniciales para `scene-item`
 
 Los tiempos se midieron sobre el archivo original de **23,375 s**. Los porcentajes de `start_progress` y `end_progress` son del **tiempo del video**, no del largo del scroll. Se puede ajustar copy y tramos al publicar en Storyblok; el recorrido del video siempre es bidireccional y permanece pausado.
 

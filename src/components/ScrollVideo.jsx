@@ -27,6 +27,10 @@ const fade = (value, start, end) => {
 
 export default function ScrollVideo({ content }) {
   const sectionRef = useRef(null);
+  const loopRef = useRef(null);
+  const loopPosterRef = useRef(null);
+  const loopLayerRef = useRef(null);
+  const scrollLayerRef = useRef(null);
   const videoRef = useRef(null);
   const posterRef = useRef(null);
   const introRef = useRef(null);
@@ -36,7 +40,9 @@ export default function ScrollVideo({ content }) {
   useEffect(() => {
     const section = sectionRef.current;
     const video = videoRef.current;
-    if (!section || !video || window.matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData) return undefined;
+    const loop = loopRef.current;
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (!section || !video || !loop || motionPreference.matches || navigator.connection?.saveData) return undefined;
 
     let alive = true;
     let trigger;
@@ -44,9 +50,58 @@ export default function ScrollVideo({ content }) {
     let duration = 0;
     let target = 0;
     let ready = false;
+    let loopFailed = false;
     let ScrollTrigger;
     const sceneNodes = [...section.querySelectorAll('[data-coffee-scene]')];
     section.classList.add('is-enhanced');
+
+    function currentProgress() {
+      const start = section.getBoundingClientRect().top + window.scrollY;
+      const distance = section.getBoundingClientRect().height - window.innerHeight;
+      return distance > 0 ? clamp((window.scrollY - start) / distance) : 0;
+    }
+
+    function updateLoopPlayback(offset) {
+      if (offset > 0 || document.hidden || loopFailed || motionPreference.matches) {
+        loop.pause();
+        if (motionPreference.matches && loopPosterRef.current) loopPosterRef.current.style.opacity = '1';
+        return;
+      }
+      if (!loop.hasAttribute('src')) {
+        loop.src = content.loopVideo;
+        loop.load();
+      }
+      loop.play().catch(() => {
+        // Un pause() al empezar a bajar puede abortar play(); se reintenta al volver arriba.
+        if (loopPosterRef.current) loopPosterRef.current.style.opacity = '1';
+      });
+    }
+
+    function updateLayers() {
+      if (!alive) return;
+      if (section.classList.contains('is-video-error')) {
+        loopLayerRef.current.style.opacity = '1';
+        scrollLayerRef.current.style.opacity = '0';
+        updateLoopPlayback(0);
+        return;
+      }
+      const start = section.getBoundingClientRect().top + window.scrollY;
+      const offset = Math.max(0, window.scrollY - start);
+      const blend = clamp(offset / Math.min(180, window.innerHeight * 0.25));
+      loopLayerRef.current.style.opacity = String(1 - blend);
+      scrollLayerRef.current.style.opacity = String(blend);
+      scrollLayerRef.current.setAttribute('aria-hidden', blend >= 0.5 ? 'false' : 'true');
+      updateLoopPlayback(offset);
+    }
+
+    function onLoopPlaying() {
+      if (alive && !loopFailed && loopPosterRef.current) loopPosterRef.current.style.opacity = '0';
+    }
+
+    function onLoopError() {
+      loopFailed = true;
+      if (loopPosterRef.current) loopPosterRef.current.style.opacity = '1';
+    }
 
     function updateText(time) {
       const percent = duration ? (time / duration) * 100 : 0;
@@ -92,7 +147,7 @@ export default function ScrollVideo({ content }) {
     function onMetadata() {
       duration = Number.isFinite(video.duration) ? video.duration : 0;
       if (!duration) return;
-      scheduleTarget(filmTime(trigger?.progress ?? 0, duration));
+      scheduleTarget(filmTime(trigger?.progress ?? currentProgress(), duration));
       ScrollTrigger?.refresh();
     }
 
@@ -108,15 +163,31 @@ export default function ScrollVideo({ content }) {
       section.classList.add('is-video-error');
       trigger?.kill();
       if (posterRef.current) posterRef.current.style.opacity = '1';
+      loopLayerRef.current.style.opacity = '1';
+      scrollLayerRef.current.style.opacity = '0';
+      scrollLayerRef.current.setAttribute('aria-hidden', 'true');
+      introRef.current.style.opacity = '1';
+      introRef.current.style.transform = 'none';
       if (statusRef.current) statusRef.current.textContent = 'El video no está disponible. Podés seguir el recorrido en las imágenes de abajo.';
+      updateLoopPlayback(0);
     }
 
+    loop.addEventListener('playing', onLoopPlaying);
+    loop.addEventListener('error', onLoopError);
     video.addEventListener('loadedmetadata', onMetadata);
     video.addEventListener('loadeddata', onFrame);
     video.addEventListener('seeked', onFrame);
     video.addEventListener('error', onError);
     video.src = content.video;
     video.load();
+    updateLayers();
+
+    function onEarlyScroll() {
+      if (trigger || section.classList.contains('is-video-error')) return;
+      updateLayers();
+      if (duration) scheduleTarget(filmTime(currentProgress(), duration));
+    }
+    window.addEventListener('scroll', onEarlyScroll, { passive: true });
 
     function restoreScroll() {
       const position = window.__coffeeRestoreY;
@@ -131,9 +202,14 @@ export default function ScrollVideo({ content }) {
     }
 
     function onPageShow(event) {
-      if (event.persisted) ScrollTrigger?.refresh();
+      if (event.persisted) {
+        ScrollTrigger?.refresh();
+        updateLayers();
+      }
     }
     window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', updateLayers);
+    motionPreference.addEventListener('change', updateLayers);
 
     import('gsap/ScrollTrigger').then(async ({ ScrollTrigger: plugin }) => {
       const { gsap } = await import('gsap');
@@ -145,10 +221,12 @@ export default function ScrollVideo({ content }) {
         start: 'top top',
         end: 'bottom bottom',
         invalidateOnRefresh: true,
-        onUpdate: (self) => { if (duration) scheduleTarget(filmTime(self.progress, duration)); },
-        onRefresh: (self) => { if (duration) scheduleTarget(filmTime(self.progress, duration)); },
+        onUpdate: (self) => { updateLayers(); if (duration) scheduleTarget(filmTime(self.progress, duration)); },
+        onRefresh: (self) => { updateLayers(); if (duration) scheduleTarget(filmTime(self.progress, duration)); },
       });
+      window.removeEventListener('scroll', onEarlyScroll);
       restoreScroll();
+      updateLayers();
       if (duration) scheduleTarget(filmTime(trigger.progress, duration));
     }).catch(() => onError());
 
@@ -156,11 +234,19 @@ export default function ScrollVideo({ content }) {
       alive = false;
       if (frame) cancelAnimationFrame(frame);
       trigger?.kill();
+      loop.removeEventListener('playing', onLoopPlaying);
+      loop.removeEventListener('error', onLoopError);
       video.removeEventListener('loadedmetadata', onMetadata);
       video.removeEventListener('loadeddata', onFrame);
       video.removeEventListener('seeked', onFrame);
       video.removeEventListener('error', onError);
       window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', updateLayers);
+      window.removeEventListener('scroll', onEarlyScroll);
+      motionPreference.removeEventListener('change', updateLayers);
+      loop.pause();
+      loop.removeAttribute('src');
+      loop.load();
       video.removeAttribute('src');
       video.load();
     };
@@ -169,22 +255,30 @@ export default function ScrollVideo({ content }) {
   return (
     <section className="coffee-film" id="inicio" ref={sectionRef} aria-label="Recorrido cinematográfico del café">
       <div className="coffee-film__stage">
-        <div className="coffee-film__media" aria-hidden="true" style={{ '--focus-desktop': content.desktopPosition, '--focus-mobile': content.mobilePosition }}>
-          <img ref={posterRef} className="coffee-film__poster" src={content.poster.src} alt="" fetchPriority="high" />
-          <video ref={videoRef} className="coffee-film__video" muted playsInline preload="none" poster={content.poster.src} tabIndex={-1} disablePictureInPicture aria-hidden="true" />
+        <div className="coffee-loop" ref={loopLayerRef} aria-hidden="true">
+          <div className="coffee-loop__media" aria-hidden="true">
+            <img ref={loopPosterRef} className="coffee-loop__poster" src={content.loopPoster} alt="" fetchPriority="high" />
+            <video ref={loopRef} className="coffee-loop__video" muted playsInline loop preload="none" poster={content.loopPoster} tabIndex={-1} disablePictureInPicture />
+          </div>
         </div>
-        <div className="coffee-film__scrim" aria-hidden="true" />
+        <div className="coffee-film__scroll" ref={scrollLayerRef} aria-hidden="true">
+          <div className="coffee-film__media" aria-hidden="true" style={{ '--focus-desktop': content.desktopPosition, '--focus-mobile': content.mobilePosition }}>
+            <img ref={posterRef} className="coffee-film__poster" src={content.poster.src} alt="" />
+            <video ref={videoRef} className="coffee-film__video" muted playsInline preload="none" poster={content.poster.src} tabIndex={-1} disablePictureInPicture aria-hidden="true" />
+          </div>
+          <div className="coffee-film__scrim" aria-hidden="true" />
+          <SceneOverlay scenes={content.scenes} />
+          <div className="coffee-film__progress" aria-hidden="true"><span ref={progressRef} /></div>
+        </div>
         <div className="coffee-film__intro" ref={introRef}>
           <span className="coffee-film__eyebrow">Una experiencia en movimiento</span>
           <h1>{content.introTitle}</h1>
           <p>{content.introSubtitle}</p>
         </div>
-        <SceneOverlay scenes={content.scenes} />
         <div className="coffee-film__bottom">
           <span className="coffee-film__hint">{content.scrollHint}</span>
           <span className="coffee-film__credit">by 1810</span>
         </div>
-        <div className="coffee-film__progress" aria-hidden="true"><span ref={progressRef} /></div>
         <p className="coffee-film__status" ref={statusRef} role="status" aria-live="polite" />
       </div>
     </section>

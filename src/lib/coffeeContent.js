@@ -73,6 +73,8 @@ export function coffeeContent(blok = {}) {
   const ctaHref = link(blok.cta_link);
 
   return {
+    loopVideo: asset(blok.intro_video, '/videos/cafe-loop.mp4').src,
+    loopPoster: '/images/cafe-loop-poster.webp',
     introTitle: fallbackText(blok.intro_title, 'Del grano a tu taza'),
     introSubtitle: fallbackText(blok.intro_subtitle, 'Una experiencia que comienza con el origen del café.'),
     scrollHint: fallbackText(blok.scroll_hint, 'Deslizá para descubrir'),

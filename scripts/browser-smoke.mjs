@@ -17,28 +17,81 @@ async function frameAt(page, ratio) {
   await page.evaluate((fraction) => {
     document.documentElement.style.scrollBehavior = 'auto';
     const film = document.querySelector('.coffee-film');
+    const start = film.getBoundingClientRect().top + window.scrollY;
     const max = film.getBoundingClientRect().height - window.innerHeight;
-    window.scrollTo(0, Math.round(max * fraction));
+    window.scrollTo(0, Math.round(start + max * fraction));
   }, ratio);
   await page.waitForFunction((fraction) => {
     const video = document.querySelector('.coffee-film__video');
     const line = document.querySelector('.coffee-film__progress span');
     const actual = Number((line?.style.transform.match(/scaleX\(([^)]+)/) || [])[1]);
     const film = document.querySelector('.coffee-film');
+    const start = film.getBoundingClientRect().top + scrollY;
     const distance = film.getBoundingClientRect().height - innerHeight;
-    const position = Math.max(0, Math.min(1, scrollY / distance));
+    const position = Math.max(0, Math.min(1, (scrollY - start) / distance));
     return video && video.readyState >= 2 && !video.seeking && Number.isFinite(actual) && Math.abs(position - fraction) < .015 && Math.abs(video.currentTime / video.duration - actual) < .012;
   }, ratio, { timeout: 20000 });
   // El seeked/currentTime puede llegar antes que el fotograma nuevo al compositor de Chrome.
   await page.waitForTimeout(400);
-  return page.locator('video').evaluate((video) => ({ time: video.currentTime, duration: video.duration, paused: video.paused }));
+  return page.locator('.coffee-film__video').evaluate((video) => ({ time: video.currentTime, duration: video.duration, paused: video.paused }));
 }
 
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   desktop.on('pageerror', (error) => errors.push(`desktop: ${error.message}`));
   await desktop.goto(baseURL, { waitUntil: 'domcontentloaded' });
-  await desktop.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
+  await desktop.waitForFunction(() => document.querySelector('.coffee-loop__video').currentTime > .15 && document.querySelector('.coffee-film').classList.contains('is-video-ready'), null, { timeout: 25000 });
+  await capture(desktop, 'desktop-loop.png');
+  const loopState = await desktop.evaluate(() => ({ source: document.querySelector('.coffee-loop__video').getAttribute('src'), duration: document.querySelector('.coffee-loop__video').duration, paused: document.querySelector('.coffee-loop__video').paused, sections: document.querySelectorAll('.coffee-film').length, scrollOpacity: getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, controls: document.querySelectorAll('.coffee-film button, .coffee-film video[controls]').length, headings: document.querySelectorAll('.coffee-film h1').length, eyebrow: document.querySelector('.coffee-film__eyebrow')?.textContent?.trim(), title: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), subtitle: document.querySelector('.coffee-film__intro p')?.textContent?.trim(), hint: document.querySelector('.coffee-film__hint')?.textContent?.trim(), credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(), subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, extraText: document.querySelectorAll('.coffee-loop__copy, .coffee-loop__link').length }));
+  if (!loopState.source || loopState.duration < 2.8 || loopState.duration > 3 || loopState.paused || loopState.sections !== 1 || loopState.scrollOpacity !== '0' || loopState.controls || loopState.headings !== 1 || loopState.eyebrow !== 'Una experiencia en movimiento' || loopState.title !== 'Del grano a tu taza' || loopState.subtitle !== 'Una experiencia que comienza con el origen del café.' || loopState.hint !== 'Deslizá para descubrir' || loopState.credit !== 'by 1810' || loopState.subtitleOpacity !== '1' || loopState.extraText) throw Error(`El escenario inicial no coincide con lo solicitado: ${JSON.stringify(loopState)}`);
+  console.log('LOOP ' + JSON.stringify(loopState));
+  const cycles = await desktop.evaluate(() => new Promise((resolve, reject) => {
+    const video = document.querySelector('.coffee-loop__video');
+    let previous = video.currentTime;
+    let wraps = 0;
+    let internalJoins = 0;
+    const done = () => { clearTimeout(timeout); video.removeEventListener('timeupdate', onTime); };
+    const onTime = () => {
+      if (previous < video.duration / 2 && video.currentTime >= video.duration / 2) internalJoins += 1;
+      if (video.currentTime < previous - .5) wraps += 1;
+      previous = video.currentTime;
+      if (wraps === 2) {
+        done();
+        resolve({ wraps, internalJoins, paused: video.paused, posterOpacity: getComputedStyle(document.querySelector('.coffee-loop__poster')).opacity });
+      }
+    };
+    const timeout = setTimeout(() => { done(); reject(Error('El loop doble no completó dos vueltas.')); }, 9000);
+    video.addEventListener('timeupdate', onTime);
+  }));
+  if (cycles.paused || cycles.internalJoins < 2 || cycles.posterOpacity !== '0') throw Error(`El loop doble se detuvo o no cruzó ambas uniones internas: ${JSON.stringify(cycles)}`);
+  console.log('BUCLE ' + JSON.stringify(cycles));
+  await desktop.emulateMedia({ reducedMotion: 'reduce' });
+  await desktop.waitForFunction(() => document.querySelector('.coffee-loop__video').paused && getComputedStyle(document.querySelector('.coffee-loop__poster')).opacity === '1');
+  await desktop.emulateMedia({ reducedMotion: 'no-preference' });
+  await desktop.waitForFunction(() => !document.querySelector('.coffee-loop__video').paused);
+  await desktop.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await desktop.waitForFunction(() => document.querySelector('.coffee-loop__video').paused);
+  await desktop.evaluate(() => {
+    delete document.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await desktop.waitForFunction(() => !document.querySelector('.coffee-loop__video').paused);
+  await desktop.evaluate(() => window.scrollTo(0, 1));
+  await desktop.waitForFunction(() => scrollY >= 1 && document.querySelector('.coffee-loop__video').paused && +getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity > 0);
+  await desktop.evaluate(() => window.scrollTo(0, 120));
+  await desktop.waitForFunction(() => scrollY >= 120 && document.querySelector('.coffee-film__video').currentTime > .15);
+  const transition = await desktop.evaluate(() => ({ scrollY, loopOpacity: +getComputedStyle(document.querySelector('.coffee-loop')).opacity, filmOpacity: +getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, heading: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), headingOpacity: +getComputedStyle(document.querySelector('.coffee-film__intro')).opacity, paused: document.querySelector('.coffee-loop__video').paused }));
+  if (!transition.paused || transition.heading !== loopState.title || transition.headingOpacity !== 1 || transition.filmOpacity < .6 || transition.filmOpacity > .75) throw Error(`La transición inicial no responde al scroll: ${JSON.stringify(transition)}`);
+  await capture(desktop, 'desktop-transition.png');
+  console.log('TRANSICION ' + JSON.stringify(transition));
+  await desktop.evaluate(() => window.scrollTo(0, 0));
+  await desktop.waitForFunction(() => scrollY === 0 && !document.querySelector('.coffee-loop__video').paused);
+  await desktop.evaluate(() => window.scrollTo(0, 180));
+  await desktop.waitForFunction(() => scrollY >= 170 && getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity === '1' && document.querySelector('.coffee-loop__video').paused);
+  await capture(desktop, 'desktop-intro.png');
   const interfaceState = await desktop.evaluate(() => ({
     header: !!document.querySelector('.site-header'),
     sceneNumbers: document.querySelectorAll('.coffee-scene__number').length,
@@ -46,19 +99,20 @@ try {
     creditCase: getComputedStyle(document.querySelector('.coffee-film__credit')).textTransform,
     titleColor: getComputedStyle(document.querySelector('.coffee-film__intro h1')).color,
     subtitleColor: getComputedStyle(document.querySelector('.coffee-film__intro p')).color,
+    subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity,
   }));
-  if (interfaceState.header || interfaceState.sceneNumbers || interfaceState.credit !== 'by 1810' || interfaceState.creditCase !== 'none' || interfaceState.titleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleColor !== 'rgb(245, 239, 227)') {
+  if (interfaceState.header || interfaceState.sceneNumbers || interfaceState.credit !== 'by 1810' || interfaceState.creditCase !== 'none' || interfaceState.titleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleColor !== 'rgb(245, 239, 227)' || interfaceState.subtitleOpacity !== '1') {
     throw Error(`El diseño del hero no coincide con lo solicitado: ${JSON.stringify(interfaceState)}`);
   }
   console.log('INTERFAZ ' + JSON.stringify(interfaceState));
   const first = await frameAt(desktop, 0);
-  await capture(desktop, 'desktop-intro.png');
   const macro = await frameAt(desktop, .43);
   await capture(desktop, 'desktop-macro.png');
   const end = await frameAt(desktop, 1);
   await capture(desktop, 'desktop-end.png');
   const reverse = await frameAt(desktop, .26);
   const reset = await frameAt(desktop, 0);
+  await desktop.waitForFunction(() => !document.querySelector('.coffee-loop__video').paused && getComputedStyle(document.querySelector('.coffee-loop')).opacity === '1');
 
   if (!(macro.time > 6 && macro.time < 8.5 && end.time > end.duration - .25 && reverse.time < macro.time && reset.time < .15)) {
     throw Error(`El scrub no avanzó y retrocedió correctamente: ${JSON.stringify({ first, macro, end, reverse, reset })}`);
@@ -72,8 +126,8 @@ try {
   const beforeReloadY = await desktop.evaluate(() => scrollY);
   await desktop.reload({ waitUntil: 'domcontentloaded' });
   await desktop.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
-  await desktop.waitForFunction(({ y, time }) => Math.abs(scrollY - y) < 25 && Math.abs(document.querySelector('video').currentTime - time) < .5, { y: beforeReloadY, time: nearEnd.time }, { timeout: 15000 });
-  console.log('RESTORE ' + JSON.stringify({ before: { y: beforeReloadY, time: nearEnd.time }, after: await desktop.evaluate(() => ({ y: scrollY, time: document.querySelector('video').currentTime })) }));
+  await desktop.waitForFunction(({ y, time }) => Math.abs(scrollY - y) < 25 && Math.abs(document.querySelector('.coffee-film__video').currentTime - time) < .5, { y: beforeReloadY, time: nearEnd.time }, { timeout: 15000 });
+  console.log('RESTORE ' + JSON.stringify({ before: { y: beforeReloadY, time: nearEnd.time }, after: await desktop.evaluate(() => ({ y: scrollY, time: document.querySelector('.coffee-film__video').currentTime })) }));
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-tagline').offsetTop + 100));
   await desktop.waitForTimeout(350);
   await capture(desktop, 'desktop-editorial.png');
@@ -85,9 +139,24 @@ try {
     const mobile = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, deviceScaleFactor: 1, ignoreHTTPSErrors: true });
     mobile.on('pageerror', (error) => errors.push(`${width}px: ${error.message}`));
     await mobile.goto(baseURL, { waitUntil: 'domcontentloaded' });
+    await mobile.waitForFunction(() => document.querySelector('.coffee-loop__video').currentTime > .1, null, { timeout: 25000 });
+    await capture(mobile, `mobile-${width}-loop.png`);
+    if (width === 390) {
+      await mobile.waitForFunction(() => {
+        const loop = document.querySelector('.coffee-loop__video');
+        return loop.currentTime > loop.duration / 2 + .05 && loop.currentTime < loop.duration - .2 && !loop.paused;
+      }, null, { timeout: 6000 });
+    }
+    await frameAt(mobile, .05);
     await mobile.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
-    const sizes = await mobile.evaluate(() => ({ viewport: innerWidth, page: document.documentElement.scrollWidth, film: document.querySelector('.coffee-film__stage').getBoundingClientRect().width }));
-    if (sizes.page > sizes.viewport + 1) throw Error(`Desbordamiento horizontal en ${width}px: ${JSON.stringify(sizes)}`);
+    const sizes = await mobile.evaluate(() => {
+      const hint = document.querySelector('.coffee-film__hint');
+      const credit = document.querySelector('.coffee-film__credit');
+      const a = hint.getBoundingClientRect();
+      const b = credit.getBoundingClientRect();
+      return { viewport: innerWidth, page: document.documentElement.scrollWidth, film: document.querySelector('.coffee-film__stage').getBoundingClientRect().width, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1 };
+    });
+    if (sizes.page > sizes.viewport + 1 || sizes.bottomCenterDifference > 2 || sizes.hintClipped) throw Error(`Texto inferior desalineado o desbordado en ${width}px: ${JSON.stringify(sizes)}`);
     await capture(mobile, `mobile-${width}.png`);
     const halfway = await frameAt(mobile, .49);
     await frameAt(mobile, 1);
@@ -96,27 +165,65 @@ try {
     await mobile.close();
   }
 
+  for (const { width, height } of [{ width: 320, height: 480 }, { width: 844, height: 390 }]) {
+    const compact = await browser.newPage({ viewport: { width, height }, isMobile: true, ignoreHTTPSErrors: true });
+    await compact.goto(baseURL, { waitUntil: 'domcontentloaded' });
+    await compact.evaluate(() => document.fonts.ready);
+    const bounds = await compact.evaluate(() => {
+      const hero = document.querySelector('.coffee-film__stage').getBoundingClientRect();
+      const copy = document.querySelector('.coffee-film__intro').getBoundingClientRect();
+      const hint = document.querySelector('.coffee-film__hint');
+      const credit = document.querySelector('.coffee-film__credit');
+      const a = hint.getBoundingClientRect();
+      const b = credit.getBoundingClientRect();
+      return { heroBottom: hero.bottom, copyTop: copy.top, copyBottom: copy.bottom, hintBottom: a.bottom, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1, pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+    });
+    if (bounds.copyTop < 0 || bounds.copyBottom > Math.min(bounds.heroBottom, height) - 16 || bounds.hintBottom > height - 16 || bounds.bottomCenterDifference > 2 || bounds.hintClipped || bounds.pageWidth > bounds.viewportWidth + 1) throw Error(`El hero se corta en ${width}×${height}: ${JSON.stringify(bounds)}`);
+    await capture(compact, `compact-${width}x${height}-loop.png`);
+    console.log('COMPACT ' + JSON.stringify({ width, height, ...bounds }));
+    await compact.close();
+  }
+
   const reduced = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', ignoreHTTPSErrors: true });
   await reduced.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await reduced.waitForSelector('.coffee-film');
-  const reducedState = await reduced.evaluate(() => ({ enhanced: document.querySelector('.coffee-film').classList.contains('is-enhanced'), videoSrc: document.querySelector('.coffee-film__video').getAttribute('src'), h1: document.querySelector('h1')?.textContent, editorial: !!document.querySelector('.coffee-panel') }));
-  if (reducedState.enhanced || reducedState.videoSrc || !reducedState.editorial) throw Error('La alternativa de movimiento reducido no estática falló.');
+  const reducedState = await reduced.evaluate(() => ({ enhanced: document.querySelector('.coffee-film').classList.contains('is-enhanced'), videoSrc: document.querySelector('.coffee-film__video').getAttribute('src'), loopSrc: document.querySelector('.coffee-loop__video').getAttribute('src'), h1: document.querySelector('h1')?.textContent, editorial: !!document.querySelector('.coffee-panel') }));
+  if (reducedState.enhanced || reducedState.videoSrc || reducedState.loopSrc || !reducedState.editorial) throw Error('La alternativa de movimiento reducido no estática falló.');
   console.log('REDUCED ' + JSON.stringify(reducedState));
   await reduced.close();
 
   const staticPage = await browser.newPage({ javaScriptEnabled: false, ignoreHTTPSErrors: true });
   const response = await staticPage.goto(baseURL, { waitUntil: 'domcontentloaded' });
-  const staticState = await staticPage.evaluate(() => ({ title: document.querySelector('h1')?.textContent, poster: document.querySelector('.coffee-film__poster')?.getAttribute('src'), editorial: document.querySelectorAll('.coffee-panel').length, videoSrc: document.querySelector('video')?.getAttribute('src') }));
-  if (response.status() !== 200 || !staticState.poster || !staticState.editorial || staticState.videoSrc) throw Error('La alternativa sin JavaScript falló.');
+  const staticState = await staticPage.evaluate(() => ({ title: document.querySelector('h1')?.textContent, poster: document.querySelector('.coffee-film__poster')?.getAttribute('src'), loopPoster: document.querySelector('.coffee-loop__poster')?.getAttribute('src'), editorial: document.querySelectorAll('.coffee-panel').length, subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, videosHaveSrc: [...document.querySelectorAll('video')].some((video) => video.hasAttribute('src')) }));
+  if (response.status() !== 200 || !staticState.poster || !staticState.loopPoster || !staticState.editorial || staticState.subtitleOpacity !== '1' || staticState.videosHaveSrc) throw Error('La alternativa sin JavaScript falló.');
+  if (await staticPage.locator('.coffee-film__intro h1').textContent() !== staticState.title) throw Error('El título no se ve sin JavaScript.');
   console.log('NO_JS ' + JSON.stringify(staticState));
   await staticPage.close();
+
+  const savedData = await browser.newPage({ ignoreHTTPSErrors: true });
+  await savedData.addInitScript(() => Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true }));
+  await savedData.goto(baseURL, { waitUntil: 'domcontentloaded' });
+  await savedData.waitForSelector('.coffee-film');
+  const savingState = await savedData.evaluate(() => ({ enhanced: document.querySelector('.coffee-film').classList.contains('is-enhanced'), videosHaveSrc: [...document.querySelectorAll('video')].some((video) => video.hasAttribute('src')) }));
+  if (savingState.enhanced || savingState.videosHaveSrc) throw Error(`El ahorro de datos descargó un video: ${JSON.stringify(savingState)}`);
+  console.log('SAVE_DATA ' + JSON.stringify(savingState));
+  await savedData.close();
+
+  const brokenLoop = await browser.newPage({ ignoreHTTPSErrors: true });
+  await brokenLoop.route('**/videos/cafe-loop.mp4', (route) => route.fulfill({ status: 404, contentType: 'text/plain', body: 'No disponible' }));
+  await brokenLoop.goto(baseURL, { waitUntil: 'domcontentloaded' });
+  await brokenLoop.waitForFunction(() => document.querySelector('.coffee-loop__video').error !== null);
+  const loopFallback = await brokenLoop.evaluate(() => ({ posterOpacity: getComputedStyle(document.querySelector('.coffee-loop__poster')).opacity, title: document.querySelector('.coffee-film__intro h1')?.textContent, hint: document.querySelector('.coffee-film__hint')?.textContent, editorial: !!document.querySelector('.coffee-panel') }));
+  if (loopFallback.posterOpacity !== '1' || !loopFallback.title || !loopFallback.hint || !loopFallback.editorial) throw Error(`El fallback del loop falló: ${JSON.stringify(loopFallback)}`);
+  console.log('LOOP_ERROR ' + JSON.stringify(loopFallback));
+  await brokenLoop.close();
 
   const broken = await browser.newPage({ ignoreHTTPSErrors: true });
   await broken.route('**/videos/cafe-recorrido.mp4', (route) => route.fulfill({ status: 404, contentType: 'text/plain', body: 'No disponible' }));
   await broken.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await broken.waitForSelector('.coffee-film.is-video-error', { timeout: 15000 });
-  const errorState = await broken.evaluate(() => ({ editorial: document.querySelectorAll('.coffee-panel').length, status: document.querySelector('.coffee-film__status').textContent, posterOpacity: getComputedStyle(document.querySelector('.coffee-film__poster')).opacity, filmHeight: document.querySelector('.coffee-film').getBoundingClientRect().height }));
-  if (!errorState.editorial || !errorState.status.includes('no está disponible') || errorState.filmHeight > 1200) throw Error('El fallback para un video caído falló.');
+  const errorState = await broken.evaluate(() => ({ editorial: document.querySelectorAll('.coffee-panel').length, status: document.querySelector('.coffee-film__status').textContent, loopOpacity: getComputedStyle(document.querySelector('.coffee-loop')).opacity, filmHeight: document.querySelector('.coffee-film').getBoundingClientRect().height }));
+  if (!errorState.editorial || !errorState.status.includes('no está disponible') || errorState.loopOpacity !== '1' || errorState.filmHeight > 1200) throw Error('El fallback para un video caído falló.');
   console.log('VIDEO_ERROR ' + JSON.stringify(errorState));
   await broken.close();
 
