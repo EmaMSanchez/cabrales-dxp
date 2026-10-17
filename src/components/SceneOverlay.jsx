@@ -9,7 +9,6 @@ export default function SceneOverlay({ scenes }) {
             key={`${scene.start}-${index}`}
             style={{ opacity: 0 }}
           >
-            <span className="coffee-scene__number">{String(index + 1).padStart(2, '0')} / {String(scenes.length).padStart(2, '0')}</span>
             <p className="coffee-scene__title">{scene.headline}</p>
             {scene.subheadline && <p className="coffee-scene__subtitle">{scene.subheadline}</p>}
           </div>

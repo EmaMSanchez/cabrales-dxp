@@ -40,13 +40,6 @@ const poster = new URL(image, Astro.url);
   </head>
   <body>
     <a class="skip-link" href="#contenido">Ir al contenido</a>
-    <header class="site-header">
-      <a href="/" class="site-header__brand" aria-label="Super Cabrales Espresso, volver al inicio">
-        <span class="site-header__mark" aria-hidden="true">C.</span>
-        <span class="site-header__name">SUPER CABRALES <small>ESPRESSO</small></span>
-      </a>
-      {!isError && <nav aria-label="Navegación principal"><a href="#historia">La experiencia <span aria-hidden="true">↗</span></a></nav>}
-    </header>
     <div id="contenido"><slot /></div>
     <footer class="site-footer">
       <p>Un recorrido para mirar el café desde otra perspectiva.</p>
