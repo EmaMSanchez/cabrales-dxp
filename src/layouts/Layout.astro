@@ -1,7 +1,8 @@
 ---
 import '../styles/coffee.css';
+import { DEFAULT_CREDIT } from '../lib/coffeeContent.js';
 
-const { title = 'Del grano a tu taza | Super Cabrales Espresso', description = 'Un recorrido audiovisual conceptual por el café, del paquete a la taza. Exploralo a tu ritmo.', image = '/images/cafe-poster.webp', isError = false } = Astro.props;
+const { title = 'Del grano a tu taza | Super Cabrales Espresso', description = 'Un recorrido audiovisual conceptual por el café, del paquete a la taza. Exploralo a tu ritmo.', image = '/images/cafe-poster.webp', footerCredit = DEFAULT_CREDIT, isError = false } = Astro.props;
 const canonical = new URL('/', Astro.url);
 const poster = new URL(image, Astro.url);
 ---
@@ -44,9 +45,13 @@ const poster = new URL(image, Astro.url);
     <a class="skip-link" href="#contenido">Ir al contenido</a>
     <div id="contenido"><slot /></div>
     <footer class="site-footer">
-      <p>Un recorrido para mirar el café desde otra perspectiva.</p>
-      <small>Experiencia conceptual independiente. Este no es un sitio oficial de la marca.</small>
-      {!isError && <a href="#inicio">Volver al inicio ↑</a>}
+      <a class="site-footer__brand" href={isError ? '/' : '#inicio'} aria-label="Cabrales: volver al inicio">
+        <img src="/images/cabrales-logo-blanco.png" width="1589" height="989" alt="Cabrales" loading="lazy" decoding="async" />
+      </a>
+      <div class="site-footer__signature">
+        <span class="site-footer__credit">{footerCredit}</span>
+        <img class="site-footer__studio" src="/images/1810-white-logo.svg" width="478" height="296" alt="" loading="lazy" decoding="async" />
+      </div>
     </footer>
   </body>
 </html>

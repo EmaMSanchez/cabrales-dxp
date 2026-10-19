@@ -1,16 +1,38 @@
 import { chromium } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { coffeeContent } from '../src/lib/coffeeContent.js';
+import { coffeeContent, creditText } from '../src/lib/coffeeContent.js';
+
+const sha256 = (path) => createHash('sha256').update(readFileSync(resolve(path))).digest('hex');
+if (sha256('public/videos/cafe-recorrido.mp4') !== sha256('media/originals/VideoFinal.mp4')) {
+  throw Error('El scrub web debe ser una copia sin recomprimir del nuevo VideoFinal.mp4.');
+}
 
 const exampleBuy = coffeeContent({ cta_link: { url: 'https://example.com/tienda' } });
 if (exampleBuy.buyHref !== 'https://example.com/tienda' || exampleBuy.cta !== null || coffeeContent({ cta_link: { url: 'javascript:alert(1)' } }).buyHref) {
   throw Error('El destino de Comprar debe respetar el enlace seguro de Storyblok incluso sin texto de CTA.');
 }
+if (coffeeContent().credit !== 'by 1810' || creditText() !== 'by 1810' || creditText({ credit_text: '   ' }) !== 'by 1810' || coffeeContent({ credit_text: '  Hecho por el estudio  ' }).credit !== 'Hecho por el estudio' || creditText({ credit_text: '  Hecho por el estudio  ' }) !== 'Hecho por el estudio') {
+  throw Error('Los créditos del recorrido y del footer deben compartir el fallback y respetar el campo opcional de Storyblok.');
+}
 const detailFallback = coffeeContent().editorial.find((section) => section.name === 'detail').image;
 const detailFromCms = coffeeContent({ detail_image: { filename: 'https://a.storyblok.com/ejemplo/granos.webp', alt: 'Macro editorial de granos' } }).editorial.find((section) => section.name === 'detail').image;
 if (detailFallback.src !== '/images/cafe-grano-detalle.webp' || detailFallback.alt !== 'Primer plano de la textura de un grano de café tostado' || detailFromCms.src !== 'https://a.storyblok.com/ejemplo/granos.webp' || detailFromCms.alt !== 'Macro editorial de granos') {
   throw Error('El detalle debe usar el grano enfocado local, salvo que Storyblok configure una imagen propia.');
+}
+if (coffeeContent({ detail_title: 'Un detalle del editor' }).editorial.find((section) => section.name === 'detail').title !== 'Un detalle del editor') {
+  throw Error('El título animado del detalle debe respetar el texto de Storyblok.');
+}
+const fallbackScenes = coffeeContent().scenes;
+const closingScene = fallbackScenes.at(-1);
+if (fallbackScenes.length !== 5 || fallbackScenes.some((scene) => !scene.highlight || !scene.headline.includes(scene.highlight)) || closingScene.headline !== 'El momento de disfrutar' || closingScene.subheadline !== 'La taza, el paquete y un instante para quedarse.' || closingScene.highlight !== 'disfrutar' || closingScene.placement !== 'above-cup' || fallbackScenes.slice(0, -1).some((scene) => scene.placement)) {
+  throw Error('El cierre local debe tener una frase breve y una ubicación propia sobre la taza.');
+}
+const cmsScenes = coffeeContent({ scenes: [{ component: 'scene-item', headline: 'Titular del editor', subheadline: 'Texto del editor', start_progress: 72, end_progress: 100, text_position: 'left' }] }).scenes;
+if (cmsScenes.length !== 1 || cmsScenes[0].headline !== 'Titular del editor' || cmsScenes[0].highlight || cmsScenes[0].placement) {
+  throw Error('Las escenas de Storyblok no deben heredar énfasis ni posiciones del copy local.');
 }
 
 const executablePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
@@ -47,19 +69,68 @@ async function frameAt(page, ratio) {
   return page.locator('.coffee-film__video').evaluate((video) => ({ time: video.currentTime, duration: video.duration, paused: video.paused }));
 }
 
+async function checkEnding(page, name) {
+  const film = await frameAt(page, .88);
+  const ending = await page.locator('.coffee-scene--above-cup').evaluate((scene) => {
+    const box = scene.getBoundingClientRect();
+    const word = scene.querySelector('strong');
+    return { title: scene.querySelector('.coffee-scene__title').textContent, subtitle: scene.querySelector('.coffee-scene__subtitle').textContent, opacity: +getComputedStyle(scene).opacity, top: box.top, bottom: box.bottom, left: box.left, right: box.right, viewportWidth: innerWidth, viewportHeight: innerHeight, titleWeight: getComputedStyle(scene.querySelector('.coffee-scene__title')).fontWeight, word: word?.textContent, wordWeight: word && getComputedStyle(word).fontWeight };
+  });
+  if (!film.paused || film.time < 18 || film.time > 22 || ending.title !== closingScene.headline || ending.subtitle !== closingScene.subheadline || ending.opacity < .9 || ending.top < 15 || ending.bottom > ending.viewportHeight * .48 || ending.left < 15 || ending.right > ending.viewportWidth - 15 || ending.titleWeight !== '500' || ending.word !== 'disfrutar' || ending.wordWeight !== '700') {
+    throw Error(`El texto final tapa la taza o pierde legibilidad en ${name}: ${JSON.stringify({ film, ending })}`);
+  }
+  await capture(page, name);
+  console.log('CIERRE ' + JSON.stringify({ name, film, ending }));
+}
+
+async function checkFooter(page, name) {
+  await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = 'auto';
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  await page.waitForFunction(() => document.querySelector('.site-footer__brand img')?.naturalWidth > 0 && document.querySelector('.site-footer__studio')?.naturalWidth > 0);
+  await page.locator('.site-footer__brand img').evaluate((image) => image.decode());
+  await page.locator('.site-footer__studio').evaluate((image) => image.decode());
+  const footer = await page.locator('.site-footer').evaluate((node) => {
+    const logo = node.querySelector('.site-footer__brand');
+    const signature = node.querySelector('.site-footer__signature');
+    const credit = node.querySelector('.site-footer__credit');
+    const studio = node.querySelector('.site-footer__studio');
+    const a = logo.getBoundingClientRect();
+    const b = credit.getBoundingClientRect();
+    const s = signature.getBoundingClientRect();
+    const c = studio.getBoundingClientRect();
+    // Cabrales concentra el dibujo al 69 % del alto del PNG; el bloque 1810, unos 3,5 px bajo su centro.
+    return { text: node.textContent.trim(), elements: node.children.length, href: logo.getAttribute('href'), label: logo.getAttribute('aria-label'), image: logo.querySelector('img').getAttribute('src'), logoLoaded: logo.querySelector('img').naturalWidth === 1589, background: getComputedStyle(logo).backgroundColor, border: getComputedStyle(logo).borderTopWidth, logoX: a.left, logoRight: a.right, logoWidth: a.width, studioSrc: studio.getAttribute('src'), studioLoaded: studio.naturalWidth > 0, studioAlt: studio.alt, studioWidth: c.width, creditX: b.left, studioX: c.left, stacked: c.top > b.bottom, creditTextAlign: getComputedStyle(credit).textAlign, creditAlignment: Math.abs((b.left + b.right - c.left - c.right) / 2), visualAlignment: Math.abs(a.top + a.height * (682 / 989) - (s.top + s.height / 2 + 3.5)), pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+  });
+  if (footer.text !== 'by 1810' || footer.elements !== 2 || footer.href !== '#inicio' || footer.label !== 'Cabrales: volver al inicio' || footer.image !== '/images/cabrales-logo-blanco.png' || !footer.logoLoaded || footer.background !== 'rgba(0, 0, 0, 0)' || footer.border !== '0px' || footer.studioSrc !== '/images/1810-white-logo.svg' || !footer.studioLoaded || footer.studioAlt !== '' || !footer.stacked || footer.logoX < 15 || footer.logoRight >= Math.min(footer.creditX, footer.studioX) || footer.creditTextAlign !== 'right' || footer.creditAlignment > 1 || footer.visualAlignment > 2 || footer.pageWidth > footer.viewportWidth + 1 || footer.logoWidth !== (footer.viewportWidth <= 700 ? 112 : 160) || footer.studioWidth !== (footer.viewportWidth <= 700 ? 68 : 92)) {
+    throw Error(`El footer no alinea el bloque «by 1810» y el nuevo logo con Cabrales en ${name}: ${JSON.stringify(footer)}`);
+  }
+  await capture(page, name);
+  console.log('FOOTER ' + JSON.stringify({ name, ...footer }));
+}
+
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   desktop.on('pageerror', (error) => errors.push(`desktop: ${error.message}`));
   await desktop.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await desktop.waitForFunction(() => document.querySelector('.coffee-loop__video').currentTime > .15 && document.querySelector('.coffee-film').classList.contains('is-video-ready'), null, { timeout: 25000 });
+  await desktop.locator('.coffee-header__brand img').evaluate((image) => image.decode());
   await capture(desktop, 'desktop-loop.png');
   const loopState = await desktop.evaluate(() => {
     const brand = document.querySelector('.coffee-header__brand').getBoundingClientRect();
     const navigation = document.querySelector('.coffee-header__nav').getBoundingClientRect();
-    return { source: document.querySelector('.coffee-loop__video').getAttribute('src'), duration: document.querySelector('.coffee-loop__video').duration, paused: document.querySelector('.coffee-loop__video').paused, sections: document.querySelectorAll('.coffee-film').length, scrollOpacity: getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, controls: document.querySelectorAll('.coffee-film button, .coffee-film video[controls]').length, headings: document.querySelectorAll('.coffee-film h1').length, eyebrow: document.querySelector('.coffee-film__eyebrow')?.textContent?.trim(), title: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), subtitle: document.querySelector('.coffee-film__intro p')?.textContent?.trim(), hint: document.querySelector('.coffee-film__hint')?.textContent?.trim(), credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(), subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, extraText: document.querySelectorAll('.coffee-loop__copy, .coffee-loop__link').length, headerVisible: !document.querySelector('.coffee-header')?.inert, logoLoaded: document.querySelector('.coffee-header__brand img')?.naturalWidth > 0, logoWidth: brand.width, alignment: Math.abs((brand.top + brand.bottom - navigation.top - navigation.bottom) / 2), nav: [...document.querySelectorAll('.coffee-header__nav .coffee-header__link')].map((node) => node.textContent.trim()), aboutHref: document.querySelector('.coffee-header__nav a:last-child')?.getAttribute('href'), buy: document.querySelector('.coffee-header__nav .coffee-header__link--buy')?.getAttribute('href') || document.querySelector('.coffee-header__nav .coffee-header__link--buy')?.disabled };
+    // El centro visual del PNG blanco, ponderado por los píxeles visibles, está al 69 % de su alto.
+    return { source: document.querySelector('.coffee-loop__video').getAttribute('src'), duration: document.querySelector('.coffee-loop__video').duration, paused: document.querySelector('.coffee-loop__video').paused, sections: document.querySelectorAll('.coffee-film').length, scrollOpacity: getComputedStyle(document.querySelector('.coffee-film__scroll')).opacity, controls: document.querySelectorAll('.coffee-film button, .coffee-film video[controls]').length, headings: document.querySelectorAll('.coffee-film h1').length, eyebrow: document.querySelector('.coffee-film__eyebrow')?.textContent?.trim(), title: document.querySelector('.coffee-film__intro h1')?.textContent?.trim(), subtitle: document.querySelector('.coffee-film__intro p')?.textContent?.trim(), hint: document.querySelector('.coffee-film__hint')?.textContent?.trim(), credit: document.querySelector('.coffee-film__credit')?.textContent?.trim(), subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, extraText: document.querySelectorAll('.coffee-loop__copy, .coffee-loop__link').length, headerVisible: !document.querySelector('.coffee-header')?.inert, logoLoaded: document.querySelector('.coffee-header__brand img')?.naturalWidth > 0, logoWidth: brand.width, alignment: Math.abs(brand.top + brand.height * (682 / 989) - (navigation.top + navigation.bottom) / 2), nav: [...document.querySelectorAll('.coffee-header__nav .coffee-header__link')].map((node) => node.textContent.trim()), aboutHref: document.querySelector('.coffee-header__nav a:last-child')?.getAttribute('href'), buy: document.querySelector('.coffee-header__nav .coffee-header__link--buy')?.getAttribute('href') || document.querySelector('.coffee-header__nav .coffee-header__link--buy')?.disabled };
   });
   if (!loopState.source || loopState.duration < 2.8 || loopState.duration > 3 || loopState.paused || loopState.sections !== 1 || loopState.scrollOpacity !== '0' || loopState.controls || loopState.headings !== 1 || loopState.eyebrow !== 'Una experiencia en movimiento' || loopState.title !== 'Del grano a tu taza' || loopState.subtitle !== 'Una experiencia que comienza con el origen del café.' || loopState.hint !== 'Deslizá para descubrir' || loopState.credit !== 'by 1810' || loopState.subtitleOpacity !== '1' || loopState.extraText || !loopState.headerVisible || !loopState.logoLoaded || loopState.logoWidth !== 112 || loopState.alignment > 1 || loopState.nav.join('|') !== 'Inicio|Comprar|Sobre nosotros' || loopState.aboutHref !== '#historia' || !loopState.buy) throw Error(`El escenario inicial no coincide con lo solicitado: ${JSON.stringify(loopState)}`);
+  const headerLogo = await desktop.locator('.coffee-header__brand').evaluate((logo) => ({ source: logo.querySelector('img').getAttribute('src'), naturalWidth: logo.querySelector('img').naturalWidth, background: getComputedStyle(logo).backgroundColor, border: getComputedStyle(logo).borderTopWidth, shadow: getComputedStyle(logo.querySelector('img')).filter }));
+  if (headerLogo.source !== '/images/cabrales-logo-blanco.png' || headerLogo.naturalWidth !== 1589 || headerLogo.background !== 'rgba(0, 0, 0, 0)' || headerLogo.border !== '0px' || headerLogo.shadow === 'none') throw Error(`El header debe usar el logo blanco transparente sin placa: ${JSON.stringify(headerLogo)}`);
   console.log('LOOP ' + JSON.stringify(loopState));
+  console.log('LOGO_HEADER ' + JSON.stringify(headerLogo));
+  const media = await desktop.evaluate(() => ({ loopPoster: document.querySelector('.coffee-loop__poster').getAttribute('src'), scrollPoster: document.querySelector('.coffee-film__poster').getAttribute('src'), opening: document.querySelector('.coffee-panel--opening img').getAttribute('src'), detail: document.querySelector('.coffee-panel--detail img').getAttribute('src'), closing: document.querySelector('.coffee-panel--closing img').getAttribute('src') }));
+  if (media.loopPoster !== '/images/cafe-loop-poster.webp' || media.scrollPoster !== '/images/cafe-poster.webp' || media.opening !== '/images/cafe-granos.webp' || media.detail !== '/images/cafe-grano-detalle.webp' || media.closing !== '/images/cafe-final.webp') throw Error(`Los fallbacks editoriales no coinciden con los videos nuevos: ${JSON.stringify(media)}`);
+  console.log('MEDIOS ' + JSON.stringify(media));
   const favicons = await desktop.evaluate(async () => Promise.all([...document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')].map(async (link) => {
     const response = await fetch(link.href);
     return { path: new URL(link.href).pathname, status: response.status, bytes: (await response.arrayBuffer()).byteLength };
@@ -153,9 +224,42 @@ try {
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-tagline').offsetTop + 100));
   await desktop.waitForTimeout(350);
   await capture(desktop, 'desktop-editorial.png');
+  const tagline = await desktop.locator('[data-coffee-tagline]').evaluate((heading) => ({ label: heading.getAttribute('aria-label'), words: heading.querySelectorAll('[data-coffee-word]').length }));
+  if (tagline.label !== 'Cada plano nos acerca al café. Cada pausa invita a mirar.' || tagline.words < 8) throw Error('La frase animada original debe permanecer en la sección editorial.');
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--opening').offsetTop + 150));
   await desktop.waitForTimeout(850);
   await capture(desktop, 'desktop-opening.png');
+  const detailTitle = await desktop.locator('[data-coffee-detail-title]').evaluate((heading) => ({ label: heading.getAttribute('aria-label'), words: heading.querySelectorAll('[data-coffee-word]').length, text: heading.textContent.trim().replace(/\s+/g, ' ') }));
+  if (detailTitle.label !== 'Cada detalle cuenta' || detailTitle.text !== detailTitle.label || detailTitle.words !== 3) throw Error(`El título del detalle perdió su texto accesible: ${JSON.stringify(detailTitle)}`);
+  await desktop.evaluate(() => {
+    const title = document.querySelector('[data-coffee-detail-title]');
+    window.scrollTo(0, title.getBoundingClientRect().top + scrollY - innerHeight * .93);
+  });
+  await desktop.waitForFunction(() => document.querySelector('[data-coffee-detail-title]')?.classList.contains('is-animated') && getComputedStyle(document.querySelector('[data-coffee-detail-title] [data-coffee-word]')).color === 'rgba(245, 239, 227, 0.3)');
+  await desktop.evaluate(() => {
+    const title = document.querySelector('[data-coffee-detail-title]');
+    window.scrollTo(0, title.getBoundingClientRect().top + scrollY - innerHeight * .60);
+  });
+  await desktop.waitForFunction(() => {
+    const words = [...document.querySelectorAll('[data-coffee-detail-title] [data-coffee-word]')];
+    const opacity = (word) => Number(getComputedStyle(word).color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([^)]+)\)/)?.[1] ?? 1);
+    return opacity(words[0]) > .85 && opacity(words.at(-1)) < .4;
+  });
+  await capture(desktop, 'desktop-detail-wordpaint.png');
+  await desktop.evaluate(() => {
+    const title = document.querySelector('[data-coffee-detail-title]');
+    window.scrollTo(0, title.getBoundingClientRect().top + scrollY - innerHeight * .25);
+  });
+  await desktop.waitForFunction(() => {
+    const words = [...document.querySelectorAll('[data-coffee-detail-title] [data-coffee-word]')];
+    return words.every((word) => ['rgb(245, 239, 227)', 'rgba(245, 239, 227, 1)'].includes(getComputedStyle(word).color));
+  });
+  await desktop.evaluate(() => {
+    const title = document.querySelector('[data-coffee-detail-title]');
+    window.scrollTo(0, title.getBoundingClientRect().top + scrollY - innerHeight * .93);
+  });
+  await desktop.waitForFunction(() => [...document.querySelectorAll('[data-coffee-detail-title] [data-coffee-word]')].every((word) => getComputedStyle(word).color === 'rgba(245, 239, 227, 0.3)'));
+  console.log('PALABRAS ' + JSON.stringify({ tagline, detailTitle, down: 'iluminado', up: 'atenuado' }));
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--detail').offsetTop + 150));
   await desktop.waitForFunction(() => document.querySelector('.coffee-panel--detail img').naturalWidth === 1280);
   await desktop.waitForTimeout(850);
@@ -163,6 +267,8 @@ try {
   if (detailImage.src !== detailFallback.src || detailImage.alt !== detailFallback.alt || detailImage.width !== 1280 || detailImage.height !== 720) throw Error(`La imagen de «Cada detalle cuenta» no se actualizó: ${JSON.stringify(detailImage)}`);
   await capture(desktop, 'desktop-detail.png');
   console.log('DETALLE ' + JSON.stringify(detailImage));
+  // El ensayo del encendido retrocede dentro del detalle; bajar de nuevo restablece la dirección del header.
+  await desktop.evaluate(() => window.scrollBy(0, 80));
   await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
   await desktop.evaluate(() => window.scrollBy(0, -100));
   await desktop.waitForFunction(() => !document.querySelector('.coffee-header').inert && document.querySelector('#historia').getBoundingClientRect().top < innerHeight);
@@ -186,13 +292,30 @@ try {
   await desktop.evaluate(() => window.scrollTo(0, document.querySelector('#historia').offsetTop - innerHeight - 100));
   await desktop.waitForFunction(() => document.querySelector('.coffee-header').inert);
   console.log('HEADER ' + JSON.stringify({ loop: 'visible', video: 'oculto', editorialDown: 'oculto', editorialUp: 'visible', returnToVideo: 'oculto', returnToLoop: 'visible' }));
+  await checkFooter(desktop, 'desktop-footer.png');
+
+  for (const { width, height } of [{ width: 1366, height: 768 }, { width: 1280, height: 800 }]) {
+    const laptop = await browser.newPage({ viewport: { width, height }, ignoreHTTPSErrors: true });
+    laptop.on('pageerror', (error) => errors.push(`laptop ${width}×${height}: ${error.message}`));
+    await laptop.goto(baseURL, { waitUntil: 'domcontentloaded' });
+    await laptop.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
+    const introBounds = await laptop.locator('.coffee-film__intro').boundingBox();
+    if (!introBounds || introBounds.x < 24 || introBounds.y < 90 || introBounds.y + introBounds.height > height - 100) throw Error(`El inicio se superpone al contenido en el portátil ${width}×${height}: ${JSON.stringify(introBounds)}`);
+    await capture(laptop, `laptop-${width}x${height}-loop.png`);
+    await checkEnding(laptop, `laptop-${width}x${height}-ending.png`);
+    await checkFooter(laptop, `laptop-${width}x${height}-footer.png`);
+    await laptop.close();
+  }
 
   for (const width of [390, 320]) {
     const mobile = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, deviceScaleFactor: 1, ignoreHTTPSErrors: true });
     mobile.on('pageerror', (error) => errors.push(`${width}px: ${error.message}`));
     await mobile.goto(baseURL, { waitUntil: 'domcontentloaded' });
     await mobile.waitForFunction(() => document.querySelector('.coffee-loop__video').currentTime > .1, null, { timeout: 25000 });
+    await mobile.locator('.coffee-header__brand img').evaluate((image) => image.decode());
     await capture(mobile, `mobile-${width}-loop.png`);
+    const mobileLogo = await mobile.locator('.coffee-header__brand').evaluate((logo) => ({ source: logo.querySelector('img').getAttribute('src'), naturalWidth: logo.querySelector('img').naturalWidth, background: getComputedStyle(logo).backgroundColor, border: getComputedStyle(logo).borderTopWidth }));
+    if (mobileLogo.source !== '/images/cabrales-logo-blanco.png' || mobileLogo.naturalWidth !== 1589 || mobileLogo.background !== 'rgba(0, 0, 0, 0)' || mobileLogo.border !== '0px') throw Error(`El header móvil no usa el logo blanco en ${width}px: ${JSON.stringify(mobileLogo)}`);
     await mobile.locator('.coffee-header__mobile summary').click();
     const mobileNav = await mobile.evaluate(() => ({ open: document.querySelector('.coffee-header__mobile').open, links: [...document.querySelectorAll('.coffee-header__mobile .coffee-header__link')].map((node) => node.textContent.trim()) }));
     if (!mobileNav.open || mobileNav.links.join('|') !== 'Inicio|Comprar|Sobre nosotros') throw Error(`El menú móvil no muestra los tres destinos en ${width}px: ${JSON.stringify(mobileNav)}`);
@@ -213,17 +336,41 @@ try {
       const b = credit.getBoundingClientRect();
       const brand = document.querySelector('.coffee-header__brand').getBoundingClientRect();
       const menu = document.querySelector('.coffee-header__mobile').getBoundingClientRect();
-      return { viewport: innerWidth, page: document.documentElement.scrollWidth, film: document.querySelector('.coffee-film__stage').getBoundingClientRect().width, logoWidth: brand.width, headerAlignment: Math.abs((brand.top + brand.bottom - menu.top - menu.bottom) / 2), bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1 };
+      return { viewport: innerWidth, page: document.documentElement.scrollWidth, film: document.querySelector('.coffee-film__stage').getBoundingClientRect().width, logoWidth: brand.width, headerAlignment: Math.abs(brand.top + brand.height * (682 / 989) - (menu.top + menu.bottom) / 2), bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1 };
     });
     if (sizes.page > sizes.viewport + 1 || sizes.logoWidth !== 84 || sizes.headerAlignment > 1 || sizes.bottomCenterDifference > 2 || sizes.hintClipped) throw Error(`Texto inferior o header desalineado en ${width}px: ${JSON.stringify(sizes)}`);
     await capture(mobile, `mobile-${width}.png`);
     const halfway = await frameAt(mobile, .49);
+    await checkEnding(mobile, `mobile-${width}-ending.png`);
     await frameAt(mobile, 1);
     await capture(mobile, `mobile-${width}-end.png`);
     await mobile.evaluate(() => window.scrollTo(0, document.querySelector('.coffee-panel--detail').offsetTop + 80));
     await mobile.waitForFunction(() => document.querySelector('.coffee-panel--detail img').naturalWidth === 1280);
     await mobile.waitForTimeout(850);
     await capture(mobile, `mobile-${width}-detail.png`);
+    const mobileDetail = await mobile.locator('[data-coffee-detail-title]').evaluate((heading) => ({ title: heading.getAttribute('aria-label'), clipped: heading.scrollWidth > heading.clientWidth + 1, words: heading.querySelectorAll('[data-coffee-word]').length }));
+    if (mobileDetail.title !== 'Cada detalle cuenta' || mobileDetail.clipped || mobileDetail.words !== 3) throw Error(`El título animado del detalle se corta en ${width}px: ${JSON.stringify(mobileDetail)}`);
+    await mobile.evaluate(() => {
+      const title = document.querySelector('[data-coffee-detail-title]');
+      window.scrollTo(0, title.getBoundingClientRect().top + scrollY - innerHeight * .60);
+    });
+    await mobile.waitForFunction(() => {
+      const words = [...document.querySelectorAll('[data-coffee-detail-title] [data-coffee-word]')];
+      const opacity = (word) => Number(getComputedStyle(word).color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([^)]+)\)/)?.[1] ?? 1);
+      return opacity(words[0]) > .85 && opacity(words.at(-1)) < .4;
+    });
+    await capture(mobile, `mobile-${width}-detail-wordpaint.png`);
+    await checkFooter(mobile, `mobile-${width}-footer.png`);
+    if (width === 320) {
+      const cmsCreditFit = await mobile.evaluate(() => {
+        for (const credit of document.querySelectorAll('.coffee-film__credit, .site-footer__credit')) credit.textContent = 'Una colaboración creativa con el estudio de diseño 1810';
+        const film = document.querySelector('.coffee-film__credit');
+        const footer = document.querySelector('.site-footer__credit');
+        return { pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth, filmFits: film.scrollWidth <= film.clientWidth + 1, footerFits: footer.scrollWidth <= footer.clientWidth + 1 };
+      });
+      if (cmsCreditFit.pageWidth > cmsCreditFit.viewportWidth + 1 || !cmsCreditFit.filmFits || !cmsCreditFit.footerFits) throw Error(`Un crédito de Storyblok más largo desborda la pantalla móvil: ${JSON.stringify(cmsCreditFit)}`);
+      console.log('CMS_CREDIT_FIT ' + JSON.stringify(cmsCreditFit));
+    }
     console.log('MOBILE ' + JSON.stringify({ width, ...sizes, halfway }));
     await mobile.close();
   }
@@ -241,10 +388,12 @@ try {
       const b = credit.getBoundingClientRect();
       const logo = document.querySelector('.coffee-header__brand').getBoundingClientRect();
       const navigation = (document.querySelector('.coffee-header__mobile').getBoundingClientRect().width ? document.querySelector('.coffee-header__mobile') : document.querySelector('.coffee-header__nav')).getBoundingClientRect();
-      return { heroBottom: hero.bottom, copyTop: copy.top, copyBottom: copy.bottom, headerBottom: Math.max(logo.bottom, navigation.bottom), headerAlignment: Math.abs((logo.top + logo.bottom - navigation.top - navigation.bottom) / 2), hintBottom: a.bottom, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1, pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+      return { heroBottom: hero.bottom, copyTop: copy.top, copyBottom: copy.bottom, headerBottom: Math.max(logo.bottom, navigation.bottom), headerAlignment: Math.abs(logo.top + logo.height * (682 / 989) - (navigation.top + navigation.bottom) / 2), hintBottom: a.bottom, bottomCenterDifference: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), hintClipped: hint.scrollWidth > hint.clientWidth + 1, pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
     });
     if (bounds.copyTop < bounds.headerBottom + 4 || bounds.headerAlignment > 1 || bounds.copyBottom > Math.min(bounds.heroBottom, height) - 16 || bounds.hintBottom > height - 16 || bounds.bottomCenterDifference > 2 || bounds.hintClipped || bounds.pageWidth > bounds.viewportWidth + 1) throw Error(`El hero se corta en ${width}×${height}: ${JSON.stringify(bounds)}`);
     await capture(compact, `compact-${width}x${height}-loop.png`);
+    await compact.waitForSelector('.coffee-film.is-video-ready', { timeout: 25000 });
+    await checkEnding(compact, `compact-${width}x${height}-ending.png`);
     console.log('COMPACT ' + JSON.stringify({ width, height, ...bounds }));
     await compact.close();
   }
@@ -252,15 +401,15 @@ try {
   const reduced = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', ignoreHTTPSErrors: true });
   await reduced.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await reduced.waitForSelector('.coffee-film');
-  const reducedState = await reduced.evaluate(() => ({ enhanced: document.querySelector('.coffee-film').classList.contains('is-enhanced'), videoSrc: document.querySelector('.coffee-film__video').getAttribute('src'), loopSrc: document.querySelector('.coffee-loop__video').getAttribute('src'), h1: document.querySelector('h1')?.textContent, editorial: !!document.querySelector('.coffee-panel') }));
-  if (reducedState.enhanced || reducedState.videoSrc || reducedState.loopSrc || !reducedState.editorial) throw Error('La alternativa de movimiento reducido no estática falló.');
+  const reducedState = await reduced.evaluate(() => ({ enhanced: document.querySelector('.coffee-film').classList.contains('is-enhanced'), videoSrc: document.querySelector('.coffee-film__video').getAttribute('src'), loopSrc: document.querySelector('.coffee-loop__video').getAttribute('src'), h1: document.querySelector('h1')?.textContent, editorial: !!document.querySelector('.coffee-panel'), detailAnimated: document.querySelector('[data-coffee-detail-title]').classList.contains('is-animated'), detailColors: [...document.querySelectorAll('[data-coffee-detail-title] [data-coffee-word]')].map((word) => getComputedStyle(word).color) }));
+  if (reducedState.enhanced || reducedState.videoSrc || reducedState.loopSrc || !reducedState.editorial || reducedState.detailAnimated || reducedState.detailColors.length !== 3 || reducedState.detailColors.some((color) => color !== 'rgb(245, 239, 227)')) throw Error('La alternativa de movimiento reducido no estática falló.');
   console.log('REDUCED ' + JSON.stringify(reducedState));
   await reduced.close();
 
   const staticPage = await browser.newPage({ javaScriptEnabled: false, ignoreHTTPSErrors: true });
   const response = await staticPage.goto(baseURL, { waitUntil: 'domcontentloaded' });
-  const staticState = await staticPage.evaluate(() => ({ title: document.querySelector('h1')?.textContent, poster: document.querySelector('.coffee-film__poster')?.getAttribute('src'), loopPoster: document.querySelector('.coffee-loop__poster')?.getAttribute('src'), editorial: document.querySelectorAll('.coffee-panel').length, subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, header: getComputedStyle(document.querySelector('.coffee-header')).visibility, nav: document.querySelector('.coffee-header__nav')?.textContent, videosHaveSrc: [...document.querySelectorAll('video')].some((video) => video.hasAttribute('src')) }));
-  if (response.status() !== 200 || !staticState.poster || !staticState.loopPoster || !staticState.editorial || staticState.subtitleOpacity !== '1' || staticState.header !== 'visible' || !staticState.nav?.includes('Sobre nosotros') || staticState.videosHaveSrc) throw Error('La alternativa sin JavaScript falló.');
+  const staticState = await staticPage.evaluate(() => ({ title: document.querySelector('h1')?.textContent, poster: document.querySelector('.coffee-film__poster')?.getAttribute('src'), loopPoster: document.querySelector('.coffee-loop__poster')?.getAttribute('src'), editorial: document.querySelectorAll('.coffee-panel').length, subtitleOpacity: getComputedStyle(document.querySelector('.coffee-film__intro p')).opacity, header: getComputedStyle(document.querySelector('.coffee-header')).visibility, headerLogo: document.querySelector('.coffee-header__brand img')?.getAttribute('src'), nav: document.querySelector('.coffee-header__nav')?.textContent, videosHaveSrc: [...document.querySelectorAll('video')].some((video) => video.hasAttribute('src')), detailTitle: document.querySelector('[data-coffee-detail-title]')?.getAttribute('aria-label'), detailColors: [...document.querySelectorAll('[data-coffee-detail-title] [data-coffee-word]')].map((word) => getComputedStyle(word).color), footer: document.querySelector('.site-footer')?.textContent.trim(), footerLogo: document.querySelector('.site-footer__brand')?.getAttribute('href'), studioLogo: document.querySelector('.site-footer__studio')?.getAttribute('src') }));
+  if (response.status() !== 200 || !staticState.poster || !staticState.loopPoster || !staticState.editorial || staticState.subtitleOpacity !== '1' || staticState.header !== 'visible' || staticState.headerLogo !== '/images/cabrales-logo-blanco.png' || !staticState.nav?.includes('Sobre nosotros') || staticState.videosHaveSrc || staticState.detailTitle !== 'Cada detalle cuenta' || staticState.detailColors.length !== 3 || staticState.detailColors.some((color) => color !== 'rgb(245, 239, 227)') || staticState.footer !== 'by 1810' || staticState.footerLogo !== '#inicio' || staticState.studioLogo !== '/images/1810-white-logo.svg') throw Error('La alternativa sin JavaScript falló.');
   if (await staticPage.locator('.coffee-film__intro h1').textContent() !== staticState.title) throw Error('El título no se ve sin JavaScript.');
   await staticPage.setViewportSize({ width: 320, height: 480 });
   await staticPage.locator('.coffee-header__mobile summary').click();

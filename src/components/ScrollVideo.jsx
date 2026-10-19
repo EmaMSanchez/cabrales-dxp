@@ -277,7 +277,7 @@ export default function ScrollVideo({ content }) {
         </div>
         <div className="coffee-film__bottom">
           <span className="coffee-film__hint">{content.scrollHint}</span>
-          <span className="coffee-film__credit">by 1810</span>
+          <span className="coffee-film__credit">{content.credit}</span>
         </div>
         <p className="coffee-film__status" ref={statusRef} role="status" aria-live="polite" />
       </div>

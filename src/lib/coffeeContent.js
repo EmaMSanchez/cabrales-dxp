@@ -1,14 +1,17 @@
 // Los porcentajes corresponden al tiempo del video fuente (23,38 s), no a distancias arbitrarias de scroll.
 export const DEFAULT_SCENES = [
-  { headline: 'Super Cabrales Espresso', subheadline: 'Todo comienza frente al paquete.', start: 0, end: 15, position: 'left', theme: 'light' },
-  { headline: 'Un mundo en su interior', subheadline: 'La cámara se acerca a los granos.', start: 15, end: 29, position: 'right', theme: 'light' },
-  { headline: 'Cada grano, de cerca', subheadline: 'La textura llena el encuadre.', start: 29, end: 36, position: 'right', theme: 'light' },
-  { headline: 'Del grano al espresso', subheadline: 'El café aparece en la taza.', start: 36, end: 72, position: 'left', theme: 'light' },
-  { headline: 'El momento de disfrutar', subheadline: 'La taza y el paquete, en un último plano.', start: 72, end: 100, position: 'left', theme: 'light' },
+  { headline: 'Super Cabrales Espresso', subheadline: 'Acá comienza el recorrido hacia tu taza.', highlight: 'Cabrales Espresso', start: 0, end: 15, position: 'left', theme: 'light' },
+  { headline: 'Un mundo en su interior', subheadline: 'Cada grano guarda algo por descubrir.', highlight: 'interior', start: 15, end: 29, position: 'right', theme: 'light' },
+  { headline: 'Cada grano, de cerca', subheadline: 'Texturas que invitan a detenerse un instante.', highlight: 'grano', start: 29, end: 36, position: 'right', theme: 'light' },
+  { headline: 'Del grano al espresso', subheadline: 'El recorrido toma forma en la taza.', highlight: 'espresso', start: 36, end: 72, position: 'left', theme: 'light' },
+  { headline: 'El momento de disfrutar', subheadline: 'La taza, el paquete y un instante para quedarse.', highlight: 'disfrutar', placement: 'above-cup', start: 72, end: 100, position: 'left', theme: 'light' },
 ];
+
+export const DEFAULT_CREDIT = 'by 1810';
 
 const text = (value) => typeof value === 'string' ? value.trim() : '';
 const fallbackText = (value, fallback) => text(value) || fallback;
+export const creditText = (blok = {}) => fallbackText(blok.credit_text, DEFAULT_CREDIT);
 const framing = (value) => {
   const position = text(value);
   return /^(?:\d{1,3}(?:\.\d+)?%|left|right|center|top|bottom)\s+(?:\d{1,3}(?:\.\d+)?%|left|right|center|top|bottom)$/.test(position)
@@ -78,6 +81,7 @@ export function coffeeContent(blok = {}) {
     introTitle: fallbackText(blok.intro_title, 'Del grano a tu taza'),
     introSubtitle: fallbackText(blok.intro_subtitle, 'Una experiencia que comienza con el origen del café.'),
     scrollHint: fallbackText(blok.scroll_hint, 'Deslizá para descubrir'),
+    credit: creditText(blok),
     video: asset(blok.scroll_video, '/videos/cafe-recorrido.mp4').src,
     poster,
     scenes: scenesFromCms(blok.scenes),

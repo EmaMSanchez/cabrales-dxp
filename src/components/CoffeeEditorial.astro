@@ -16,7 +16,9 @@ const words = 'Cada plano nos acerca al café. Cada pausa invita a mirar.'.split
       <section class={`coffee-panel coffee-panel--${item.name}`} aria-labelledby={`coffee-${item.name}`} data-coffee-panel>
         <div class="coffee-panel__copy">
           <span class="coffee-editorial__eyebrow">{item.eyebrow}</span>
-          <h2 id={`coffee-${item.name}`}>{item.title}</h2>
+          <h2 id={`coffee-${item.name}`} data-coffee-detail-title={item.name === 'detail' ? '' : undefined} aria-label={item.name === 'detail' ? item.title : undefined}>
+            {item.name === 'detail' ? item.title.split(/\s+/).map((word) => <span data-coffee-word aria-hidden="true">{word}{' '}</span>) : item.title}
+          </h2>
           {item.text && <p>{item.text}</p>}
           {item.name === 'closing' && cta && <a class="coffee-cta" href={cta.href}>{cta.label}<span aria-hidden="true">↗</span></a>}
         </div>
@@ -35,10 +37,9 @@ const words = 'Cada plano nos acerca al café. Cada pausa invita a mirar.'.split
 
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     gsap.registerPlugin(ScrollTrigger);
-    const tagline = document.querySelector('[data-coffee-tagline]');
-    if (tagline) {
-      const words = [...tagline.querySelectorAll('[data-coffee-word]')];
-      tagline.classList.add('is-animated');
+    document.querySelectorAll('[data-coffee-tagline], [data-coffee-detail-title]').forEach((heading) => {
+      const words = [...heading.querySelectorAll('[data-coffee-word]')];
+      heading.classList.add('is-animated');
       const paint = (progress) => {
         words.forEach((word, index) => {
           const x = Math.min(1, Math.max(0, progress * words.length - index));
@@ -47,13 +48,13 @@ const words = 'Cada plano nos acerca al café. Cada pausa invita a mirar.'.split
         });
       };
       ScrollTrigger.create({
-        trigger: tagline,
+        trigger: heading,
         start: 'top 85%',
         end: 'bottom 45%',
         onUpdate: (self) => paint(self.progress),
         onRefresh: (self) => paint(self.progress),
       });
-    }
+    });
 
     if ('IntersectionObserver' in window) {
       const panels = [...document.querySelectorAll('[data-coffee-panel]')];

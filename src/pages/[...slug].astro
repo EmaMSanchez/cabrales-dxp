@@ -2,6 +2,7 @@
 import { useStoryblokApi } from '@storyblok/astro';
 import StoryblokComponent from '@storyblok/astro/StoryblokComponent.astro';
 import Layout from '../layouts/Layout.astro';
+import { creditText } from '../lib/coffeeContent.js';
 
 // La única Story de este frontend es «cabrales». El slug editorial no condiciona la URL pública.
 const { slug } = Astro.params;
@@ -34,7 +35,7 @@ const cmsPoster = hero?.scroll_poster_image?.filename || hero?.poster_image?.fil
 const image = typeof cmsPoster === 'string' && /^https?:\/\//i.test(cmsPoster) ? cmsPoster : '/images/cafe-poster.webp';
 ---
 
-<Layout title={unknownRoute ? 'Página no encontrada | Super Cabrales Espresso' : title} image={image} isError={unknownRoute}>
+<Layout title={unknownRoute ? 'Página no encontrada | Super Cabrales Espresso' : title} image={image} footerCredit={creditText(hero)} isError={unknownRoute}>
   {unknownRoute ? (
     <main class="coffee-not-found"><p>404 / Esta página no existe</p><h1>Volvé al comienzo del recorrido.</h1><a href="/">Ir al inicio →</a></main>
   ) : (
