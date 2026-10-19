@@ -5,9 +5,14 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { coffeeContent, creditText } from '../src/lib/coffeeContent.js';
 
-const sha256 = (path) => createHash('sha256').update(readFileSync(resolve(path))).digest('hex');
-if (sha256('public/videos/cafe-recorrido.mp4') !== sha256('media/originals/VideoFinal.mp4')) {
-  throw Error('El scrub web debe ser una copia sin recomprimir del nuevo VideoFinal.mp4.');
+const sha256 = (contents) => createHash('sha256').update(contents).digest('hex');
+const originalVideo = readFileSync(resolve('media/originals/VideoFinal.mp4'));
+const webVideo = readFileSync(resolve('public/videos/cafe-recorrido.mp4'));
+if (sha256(originalVideo) !== '74087d310f5d26a22d5e2867bc5d6b76419ba2eec56d5173a4000bfb5f191ea3') {
+  throw Error('El VideoFinal.mp4 original recibido no debe modificarse.');
+}
+if (webVideo.length >= originalVideo.length * .65 || webVideo.indexOf('ftyp') !== 4 || webVideo.indexOf('moov') < 0 || webVideo.indexOf('moov') > webVideo.indexOf('mdat') || sha256(webVideo) === sha256(originalVideo)) {
+  throw Error('El scrub web debe ser una derivación más liviana, reproducible y con faststart del VideoFinal.mp4 intacto.');
 }
 
 const exampleBuy = coffeeContent({ cta_link: { url: 'https://example.com/tienda' } });
@@ -66,7 +71,7 @@ async function frameAt(page, ratio) {
   }, ratio, { timeout: 20000 });
   // El seeked/currentTime puede llegar antes que el fotograma nuevo al compositor de Chrome.
   await page.waitForTimeout(400);
-  return page.locator('.coffee-film__video').evaluate((video) => ({ time: video.currentTime, duration: video.duration, paused: video.paused }));
+  return page.locator('.coffee-film__video').evaluate((video) => ({ time: video.currentTime, duration: video.duration, width: video.videoWidth, height: video.videoHeight, paused: video.paused }));
 }
 
 async function checkEnding(page, name) {
@@ -206,7 +211,7 @@ try {
   const reset = await frameAt(desktop, 0);
   await desktop.waitForFunction(() => !document.querySelector('.coffee-loop__video').paused && getComputedStyle(document.querySelector('.coffee-loop')).opacity === '1');
 
-  if (!(macro.time > 6 && macro.time < 8.5 && end.time > end.duration - .25 && reverse.time < macro.time && reset.time < .15)) {
+  if (!(first.width === 1280 && first.height === 720 && first.duration === 23.375 && macro.time > 6 && macro.time < 8.5 && end.time > end.duration - .25 && reverse.time < macro.time && reset.time < .15)) {
     throw Error(`El scrub no avanzó y retrocedió correctamente: ${JSON.stringify({ first, macro, end, reverse, reset })}`);
   }
   if ([first, macro, end, reverse, reset].some((sample) => !sample.paused)) throw Error('El video se está reproduciendo sin scroll.');
