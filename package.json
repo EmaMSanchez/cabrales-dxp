@@ -14,7 +14,7 @@
 		"@storyblok/astro": "^10.3.1",
 		"astro": "^7.4.0",
 		"playwright-core": "^1.64.1",
-		"vite": "^8.3.0",
+		"vite": "^8.3.4",
 		"vite-plugin-mkcert": "^2.1.0"
 	},
 	"dependencies": {
